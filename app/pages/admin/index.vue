@@ -145,16 +145,49 @@ const formatCurrency = (value) => {
     currency: 'KRW',
   }).format(value)
 }
+
+// 주문번호 검색
+const router = useRouter()
+const searchOrderNo = ref('')
+
+const handleOrderSearch = () => {
+  const keyword = searchOrderNo.value.trim()
+  if (!keyword) return
+
+  router.push({
+    path: '/admin/orders',
+    query: { keyword, type: 'orderNo' },
+  })
+}
 </script>
 
 <template>
-  <div>
+  <LayoutDetailPage>
     <!-- Page Header -->
     <div class="mb-6">
-      <h1 class="text-2xl font-bold text-neutral-900">대시보드</h1>
-      <p class="mt-1 text-neutral-600">
-        안녕하세요, {{ authStore.userName || '관리자' }}님.
-      </p>
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-bold text-neutral-900">대시보드</h1>
+          <p class="mt-1 text-neutral-600">
+            안녕하세요, {{ authStore.userName || '관리자' }}님.
+          </p>
+        </div>
+        <!-- 주문번호 검색 -->
+        <div class="flex gap-2">
+          <input
+            v-model="searchOrderNo"
+            type="text"
+            placeholder="주문번호로 검색"
+            class="w-48 md:w-56 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            @keyup.enter="handleOrderSearch"
+          >
+          <UiButton variant="primary" size="sm" @click="handleOrderSearch">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </UiButton>
+        </div>
+      </div>
     </div>
 
     <!-- 주문 현황 -->
@@ -335,5 +368,5 @@ const formatCurrency = (value) => {
         </template>
       </UiCard>
     </section>
-  </div>
+  </LayoutDetailPage>
 </template>

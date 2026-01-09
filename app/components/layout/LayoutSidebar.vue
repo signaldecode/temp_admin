@@ -15,16 +15,67 @@ const route = useRoute()
 // 사이드바 접힘 상태
 const isCollapsed = computed(() => uiStore.sidebar.isCollapsed)
 
-// 현재 활성 메뉴 체크
-const isActive = (path) => {
-  if (path === '/admin') {
-    return route.path === '/admin'
+// 모든 메뉴의 경로 목록 (정확한 매칭용)
+const allMenuPaths = computed(() => {
+  const paths = []
+  navigationItems.forEach(item => {
+    if (item.to) paths.push(item.to)
+    if (item.children) {
+      item.children.forEach(child => {
+        if (child.to) paths.push(child.to)
+      })
+    }
+  })
+  return paths.sort((a, b) => b.length - a.length) // 긴 경로부터 정렬
+})
+
+// 현재 경로가 어떤 메뉴에 속하는지 찾기
+const findMatchingMenuPath = (currentPath) => {
+  // 정확히 일치하는 메뉴 먼저 찾기
+  const exactMatch = allMenuPaths.value.find(p => p === currentPath)
+  if (exactMatch) return exactMatch
+
+  // 현재 경로가 메뉴 경로로 시작하는지 확인 (긴 경로부터)
+  for (const menuPath of allMenuPaths.value) {
+    if (currentPath.startsWith(menuPath + '/')) {
+      return menuPath
+    }
   }
-  return route.path.startsWith(path)
+  return null
+}
+
+// 현재 활성 메뉴 경로
+const activeMenuPath = computed(() => findMatchingMenuPath(route.path))
+
+// 메뉴 아이템이 활성 상태인지 체크
+const isActive = (path) => {
+  return activeMenuPath.value === path
+}
+
+// 부모 메뉴가 활성 자식을 가지는지 체크
+const hasActiveChild = (item) => {
+  if (!item.children) return false
+  return item.children.some(child => isActive(child.to))
 }
 
 // 열린 서브메뉴 관리
 const openSubmenus = ref([])
+
+// 현재 경로에 맞는 부모 메뉴 자동 펼침
+const initOpenSubmenus = () => {
+  navigationItems.forEach(item => {
+    if (item.children && hasActiveChild(item)) {
+      if (!openSubmenus.value.includes(item.id)) {
+        openSubmenus.value.push(item.id)
+      }
+    }
+  })
+}
+
+// 라우트 변경 시 자동 펼침
+watch(() => route.path, () => {
+  initOpenSubmenus()
+}, { immediate: true })
 
 const toggleSubmenu = (menuId) => {
   const index = openSubmenus.value.indexOf(menuId)
@@ -69,9 +120,11 @@ const toggleCollapse = () => {
               type="button"
               :class="[
                 'w-full flex items-center gap-3 px-4 py-3 text-left',
-                'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900',
                 'transition-colors',
                 { 'justify-center': isCollapsed },
+                hasActiveChild(item)
+                  ? 'text-primary-700 bg-primary-50 font-medium'
+                  : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900',
               ]"
               :aria-expanded="isSubmenuOpen(item.id)"
               @click="toggleSubmenu(item.id)"
@@ -84,7 +137,7 @@ const toggleCollapse = () => {
 
               <!-- Label & Arrow (펼침 상태만) -->
               <template v-if="!isCollapsed">
-                <span class="flex-1 text-sm font-medium">{{ item.label }}</span>
+                <span class="flex-1 text-sm">{{ item.label }}</span>
                 <svg
                   :class="[
                     'w-4 h-4 transition-transform',
@@ -105,37 +158,28 @@ const toggleCollapse = () => {
             </button>
 
             <!-- Submenu -->
-            <Transition
-              enter-active-class="transition-all duration-200"
-              enter-from-class="opacity-0 max-h-0"
-              enter-to-class="opacity-100 max-h-96"
-              leave-active-class="transition-all duration-200"
-              leave-from-class="opacity-100 max-h-96"
-              leave-to-class="opacity-0 max-h-0"
+            <ul
+              v-show="isSubmenuOpen(item.id) && !isCollapsed"
+              class="overflow-hidden"
             >
-              <ul
-                v-if="isSubmenuOpen(item.id) && !isCollapsed"
-                class="overflow-hidden"
+              <li
+                v-for="child in item.children"
+                :key="child.id"
               >
-                <li
-                  v-for="child in item.children"
-                  :key="child.id"
+                <NuxtLink
+                  :to="child.to"
+                  :class="[
+                    'flex items-center gap-3 pl-12 pr-4 py-2.5',
+                    'text-sm transition-colors',
+                    isActive(child.to)
+                      ? 'text-primary-700 bg-primary-100 font-medium border-r-2 border-primary-600'
+                      : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50',
+                  ]"
                 >
-                  <NuxtLink
-                    :to="child.to"
-                    :class="[
-                      'flex items-center gap-3 pl-12 pr-4 py-2',
-                      'text-sm transition-colors',
-                      isActive(child.to)
-                        ? 'text-primary-700 bg-primary-50 font-medium'
-                        : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50',
-                    ]"
-                  >
-                    {{ child.label }}
-                  </NuxtLink>
-                </li>
-              </ul>
-            </Transition>
+                  {{ child.label }}
+                </NuxtLink>
+              </li>
+            </ul>
           </template>
 
           <!-- Menu Item without Children -->
@@ -147,7 +191,7 @@ const toggleCollapse = () => {
                 'transition-colors',
                 { 'justify-center': isCollapsed },
                 isActive(item.to)
-                  ? 'text-primary-700 bg-primary-50 font-medium border-r-2 border-primary-700'
+                  ? 'text-primary-700 bg-primary-100 font-medium border-r-2 border-primary-600'
                   : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900',
               ]"
               :title="isCollapsed ? item.label : undefined"
@@ -161,7 +205,7 @@ const toggleCollapse = () => {
               <!-- Label (펼침 상태만) -->
               <span
                 v-if="!isCollapsed"
-                class="text-sm font-medium"
+                class="text-sm"
               >
                 {{ item.label }}
               </span>

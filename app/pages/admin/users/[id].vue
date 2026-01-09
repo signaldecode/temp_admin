@@ -7,19 +7,26 @@
  * - 메모
  */
 
+import { useUiStore } from '~/stores/ui'
+
 const route = useRoute()
 const router = useRouter()
+const uiStore = useUiStore()
 
 const userId = computed(() => route.params.id)
 
 // 로딩 상태
 const isLoading = ref(true)
+const isSavingMemo = ref(false)
 
 // 회원 정보 (Mock 데이터)
 const user = ref(null)
 
 // 주문 내역 (Mock 데이터)
 const orders = ref([])
+
+// 메모 히스토리
+const memos = ref([])
 
 // Mock 데이터 로드
 onMounted(() => {
@@ -43,7 +50,6 @@ onMounted(() => {
         address1: '서울시 강남구 테헤란로 123',
         address2: '456호',
       },
-      memo: 'VIP 고객, 응대 시 주의',
       stats: {
         orderCount: 45,
         totalSpent: 1250000,
@@ -59,6 +65,31 @@ onMounted(() => {
       { id: '987', date: '2024-12-28', products: '청바지 외 1건', amount: 98000, status: 'delivered' },
       { id: '965', date: '2024-12-20', products: '겨울 부츠', amount: 129000, status: 'delivered' },
       { id: '943', date: '2024-12-15', products: '목도리 세트', amount: 45000, status: 'cancelled' },
+    ]
+
+    // 메모 히스토리 (Mock 데이터)
+    memos.value = [
+      {
+        id: 1,
+        content: 'VIP 고객, 응대 시 주의 필요',
+        adminId: 'admin001',
+        adminName: '김관리',
+        createdAt: '2025-01-06 10:30:00',
+      },
+      {
+        id: 2,
+        content: '환불 요청 시 즉시 처리 요망 (이전 CS 건 참고)',
+        adminId: 'admin002',
+        adminName: '이담당',
+        createdAt: '2025-01-05 14:20:00',
+      },
+      {
+        id: 3,
+        content: '생일 기념 쿠폰 발급 완료 (5/20)',
+        adminId: 'admin001',
+        adminName: '김관리',
+        createdAt: '2024-05-18 09:00:00',
+      },
     ]
 
     isLoading.value = false
@@ -100,6 +131,90 @@ const formatCurrency = (value) => {
   return new Intl.NumberFormat('ko-KR').format(value) + '원'
 }
 
+// 기본 정보 아이템
+const basicInfoItems = computed(() => {
+  if (!user.value) return []
+  return [
+    { key: 'userId', label: '회원 ID', value: user.value.userId },
+    { key: 'name', label: '이름', value: user.value.name },
+    { key: 'phone', label: '연락처', value: user.value.phone },
+    { key: 'email', label: '이메일', value: user.value.email },
+    { key: 'birthDate', label: '생년월일', value: user.value.birthDate || '-' },
+    { key: 'gender', label: '성별', value: genderMap[user.value.gender] || '-' },
+  ]
+})
+
+// 배송지 정보 아이템
+const addressInfoItems = computed(() => {
+  if (!user.value) return []
+  return [
+    { key: 'zipcode', label: '우편번호', value: user.value.address?.zipcode || '-' },
+    { key: 'address', label: '주소', value: user.value.address?.address1 || '-' },
+  ]
+})
+
+// 메모 추가
+const handleAddMemo = async (memoData) => {
+  isSavingMemo.value = true
+
+  // 실제로는 API 호출
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  const newMemo = {
+    id: Date.now(),
+    content: memoData.content,
+    adminId: memoData.adminId,
+    adminName: memoData.adminName,
+    createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+  }
+
+  // 최신순으로 맨 앞에 추가
+  memos.value = [newMemo, ...memos.value]
+  isSavingMemo.value = false
+
+  uiStore.showToast({
+    type: 'success',
+    message: '메모가 등록되었습니다.',
+  })
+}
+
+// 메모 수정
+const handleEditMemo = async (memoData) => {
+  isSavingMemo.value = true
+
+  // 실제로는 API 호출
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  const index = memos.value.findIndex((m) => m.id === memoData.id)
+  if (index > -1) {
+    memos.value[index] = {
+      ...memos.value[index],
+      content: memoData.content,
+      updatedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    }
+  }
+
+  isSavingMemo.value = false
+
+  uiStore.showToast({
+    type: 'success',
+    message: '메모가 수정되었습니다.',
+  })
+}
+
+// 메모 삭제
+const handleDeleteMemo = async (memoId) => {
+  // 실제로는 API 호출
+  await new Promise((resolve) => setTimeout(resolve, 300))
+
+  memos.value = memos.value.filter((m) => m.id !== memoId)
+
+  uiStore.showToast({
+    type: 'success',
+    message: '메모가 삭제되었습니다.',
+  })
+}
+
 // 목록으로 돌아가기
 const goBack = () => {
   router.push('/admin/users')
@@ -120,7 +235,7 @@ const tabs = [
 </script>
 
 <template>
-  <div>
+  <LayoutDetailPage>
     <!-- Page Header -->
     <div class="mb-6">
       <button
@@ -216,32 +331,7 @@ const tabs = [
           <template #header>
             <h3 class="font-semibold text-neutral-900">기본 정보</h3>
           </template>
-          <dl class="space-y-3">
-            <div class="flex">
-              <dt class="w-24 text-sm text-neutral-500 flex-shrink-0">회원 ID</dt>
-              <dd class="text-sm text-neutral-900">{{ user.userId }}</dd>
-            </div>
-            <div class="flex">
-              <dt class="w-24 text-sm text-neutral-500 flex-shrink-0">이름</dt>
-              <dd class="text-sm text-neutral-900">{{ user.name }}</dd>
-            </div>
-            <div class="flex">
-              <dt class="w-24 text-sm text-neutral-500 flex-shrink-0">연락처</dt>
-              <dd class="text-sm text-neutral-900">{{ user.phone }}</dd>
-            </div>
-            <div class="flex">
-              <dt class="w-24 text-sm text-neutral-500 flex-shrink-0">이메일</dt>
-              <dd class="text-sm text-neutral-900">{{ user.email }}</dd>
-            </div>
-            <div class="flex">
-              <dt class="w-24 text-sm text-neutral-500 flex-shrink-0">생년월일</dt>
-              <dd class="text-sm text-neutral-900">{{ user.birthDate || '-' }}</dd>
-            </div>
-            <div class="flex">
-              <dt class="w-24 text-sm text-neutral-500 flex-shrink-0">성별</dt>
-              <dd class="text-sm text-neutral-900">{{ genderMap[user.gender] || '-' }}</dd>
-            </div>
-          </dl>
+          <UiDescriptionList :items="basicInfoItems" />
         </UiCard>
 
         <!-- 배송 정보 -->
@@ -249,19 +339,12 @@ const tabs = [
           <template #header>
             <h3 class="font-semibold text-neutral-900">기본 배송지</h3>
           </template>
-          <dl class="space-y-3">
-            <div class="flex">
-              <dt class="w-24 text-sm text-neutral-500 flex-shrink-0">우편번호</dt>
-              <dd class="text-sm text-neutral-900">{{ user.address?.zipcode || '-' }}</dd>
-            </div>
-            <div class="flex">
-              <dt class="w-24 text-sm text-neutral-500 flex-shrink-0">주소</dt>
-              <dd class="text-sm text-neutral-900">
-                {{ user.address?.address1 || '-' }}
-                <span v-if="user.address?.address2" class="block">{{ user.address.address2 }}</span>
-              </dd>
-            </div>
-          </dl>
+          <UiDescriptionList :items="addressInfoItems">
+            <template #value-address>
+              {{ user.address?.address1 || '-' }}
+              <span v-if="user.address?.address2" class="block">{{ user.address.address2 }}</span>
+            </template>
+          </UiDescriptionList>
         </UiCard>
 
         <!-- 주문 통계 -->
@@ -293,17 +376,21 @@ const tabs = [
           </dl>
         </UiCard>
 
-        <!-- 관리자 메모 -->
-        <UiCard>
+        <!-- 관리자 메모 히스토리 -->
+        <UiCard class="lg:col-span-2">
           <template #header>
-            <div class="flex items-center justify-between">
-              <h3 class="font-semibold text-neutral-900">관리자 메모</h3>
-              <UiButton variant="ghost" size="xs">수정</UiButton>
-            </div>
+            <h3 class="font-semibold text-neutral-900">관리자 메모</h3>
           </template>
-          <p class="text-sm text-neutral-700">
-            {{ user.memo || '메모가 없습니다.' }}
-          </p>
+          <DomainMemoHistory
+            :memos="memos"
+            :is-saving="isSavingMemo"
+            current-admin-id="admin001"
+            current-admin-name="김관리"
+            placeholder="회원에 대한 메모를 남겨주세요..."
+            @add="handleAddMemo"
+            @edit="handleEditMemo"
+            @delete="handleDeleteMemo"
+          />
         </UiCard>
       </div>
 
@@ -399,5 +486,5 @@ const tabs = [
         </template>
       </UiEmpty>
     </UiCard>
-  </div>
+  </LayoutDetailPage>
 </template>

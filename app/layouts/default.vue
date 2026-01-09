@@ -49,11 +49,11 @@ const mainMarginClass = computed(() => {
     <main
       id="main-content"
       :class="[
-        'h-screen pt-header transition-all duration-300 flex flex-col',
+        'h-screen pt-header transition-all duration-300 flex flex-col overflow-hidden',
         mainMarginClass,
       ]"
     >
-      <div class="flex-1 min-h-0 flex flex-col overflow-hidden p-4 md:p-6">
+      <div class="flex-1 min-h-0 flex flex-col p-4 md:p-6">
         <slot />
       </div>
     </main>
