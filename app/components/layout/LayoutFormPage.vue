@@ -71,7 +71,7 @@ const handleCancel = () => {
     </div>
 
     <!-- Footer (Fixed) -->
-    <div class="flex-shrink-0 border-t border-neutral-200 bg-white -mx-6 px-6 py-4 mt-auto">
+    <div class="flex-shrink-0 border-t border-neutral-200 bg-white -mx-6 -mb-6 px-6 py-4 mt-auto">
       <div class="flex items-center justify-end gap-3">
         <slot name="footer-left" />
         <div class="flex-1" />
