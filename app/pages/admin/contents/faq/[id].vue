@@ -27,7 +27,6 @@ const form = ref({
   answer: '',
   category: 'order',
   order: 1,
-  status: 'draft',
 })
 
 const isLoading = ref(false)
@@ -41,7 +40,6 @@ const fetchFaq = async () => {
     answer: '기본 배송비는 3,000원이며, 50,000원 이상 구매 시 무료배송입니다.\n\n제주 및 도서산간 지역은 추가 배송비가 발생할 수 있습니다.',
     category: 'shipping',
     order: 1,
-    status: 'published',
   }
   isLoading.value = false
 }
@@ -93,19 +91,6 @@ onMounted(() => {
     <div v-if="isLoading" class="flex items-center justify-center py-20"><UiSpinner size="lg" /></div>
 
     <div v-else class="space-y-6">
-      <UiCard title="상태">
-        <div class="flex gap-4">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input v-model="form.status" type="radio" value="published" class="w-4 h-4 text-primary-600">
-            <span class="text-sm text-neutral-700">게시</span>
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input v-model="form.status" type="radio" value="draft" class="w-4 h-4 text-primary-600">
-            <span class="text-sm text-neutral-700">임시저장</span>
-          </label>
-        </div>
-      </UiCard>
-
       <UiCard title="FAQ 정보">
         <div class="space-y-4">
           <div class="grid grid-cols-2 gap-4">

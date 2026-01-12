@@ -26,7 +26,6 @@ const form = ref({
   content: '',
   category: 'general',
   isPinned: false,
-  status: 'draft',
   viewCount: 0,
 })
 
@@ -41,7 +40,6 @@ const fetchNotice = async () => {
     content: '안녕하세요. 2025년 새해가 밝았습니다.\n\n신년을 맞이하여 운영 일정을 안내드립니다.\n\n감사합니다.',
     category: 'general',
     isPinned: true,
-    status: 'published',
     viewCount: 1520,
   }
   isLoading.value = false
@@ -94,21 +92,11 @@ onMounted(() => {
     <div v-if="isLoading" class="flex items-center justify-center py-20"><UiSpinner size="lg" /></div>
 
     <div v-else class="space-y-6">
-      <UiCard title="상태">
-        <div class="flex flex-wrap gap-4">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input v-model="form.status" type="radio" value="published" class="w-4 h-4 text-primary-600">
-            <span class="text-sm text-neutral-700">게시</span>
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input v-model="form.status" type="radio" value="draft" class="w-4 h-4 text-primary-600">
-            <span class="text-sm text-neutral-700">임시저장</span>
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer ml-auto">
-            <input v-model="form.isPinned" type="checkbox" class="w-4 h-4 text-primary-600 rounded">
-            <span class="text-sm text-neutral-700">상단 고정</span>
-          </label>
-        </div>
+      <UiCard title="옵션">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input v-model="form.isPinned" type="checkbox" class="w-4 h-4 text-primary-600 rounded">
+          <span class="text-sm text-neutral-700">상단 고정</span>
+        </label>
       </UiCard>
 
       <UiCard title="기본 정보">
