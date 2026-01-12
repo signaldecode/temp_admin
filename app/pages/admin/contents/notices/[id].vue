@@ -37,7 +37,7 @@ const fetchNotice = async () => {
   await new Promise((resolve) => setTimeout(resolve, 300))
   form.value = {
     title: '2025년 신년 운영 안내',
-    content: '안녕하세요. 2025년 새해가 밝았습니다.\n\n신년을 맞이하여 운영 일정을 안내드립니다.\n\n감사합니다.',
+    content: '<h2>안녕하세요</h2><p>2025년 새해가 밝았습니다.</p><p>신년을 맞이하여 운영 일정을 안내드립니다.</p><ul><li>1월 1일 ~ 1월 2일: 휴무</li><li>1월 3일부터 정상 운영</li></ul><p>감사합니다.</p>',
     category: 'general',
     isPinned: true,
     viewCount: 1520,
@@ -113,7 +113,11 @@ onMounted(() => {
           </div>
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">내용</label>
-            <textarea v-model="form.content" rows="10" class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="공지 내용을 입력하세요" />
+            <UiRichEditor
+              v-model="form.content"
+              placeholder="공지 내용을 입력하세요..."
+              min-height="300px"
+            />
           </div>
         </div>
       </UiCard>
