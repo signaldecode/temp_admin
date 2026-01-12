@@ -14,6 +14,9 @@ const uiStore = useUiStore()
 // 모드 판별
 const isEditMode = computed(() => route.params.id !== 'new')
 
+// 상품 ID
+const productId = computed(() => route.params.id)
+
 // 로딩 상태
 const isLoading = ref(false)
 
