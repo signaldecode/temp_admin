@@ -43,9 +43,19 @@ defineProps({
     type: String,
     default: '취소',
   },
+  // 삭제 버튼 표시
+  showDelete: {
+    type: Boolean,
+    default: false,
+  },
+  // 삭제 버튼 텍스트
+  deleteText: {
+    type: String,
+    default: '삭제',
+  },
 })
 
-const emit = defineEmits(['save', 'cancel'])
+const emit = defineEmits(['save', 'cancel', 'delete'])
 
 const handleSave = () => {
   emit('save')
@@ -53,6 +63,10 @@ const handleSave = () => {
 
 const handleCancel = () => {
   emit('cancel')
+}
+
+const handleDelete = () => {
+  emit('delete')
 }
 </script>
 
@@ -71,14 +85,22 @@ const handleCancel = () => {
     </div>
 
     <!-- Footer (Fixed) -->
-    <div class="flex-shrink-0 border-t border-neutral-200 bg-white -mx-6 -mb-6 px-6 py-4 mt-auto">
-      <div class="flex items-center justify-end gap-3">
-        <slot name="footer-left" />
-        <div class="flex-1" />
+    <div class="flex-shrink-0 border-t border-neutral-200 bg-white -mx-6 -mb-6 px-6 py-5 mt-auto">
+      <div class="flex items-center justify-center gap-4">
         <slot name="footer">
+          <UiButton
+            v-if="showDelete"
+            variant="danger"
+            size="lg"
+            :disabled="isSaving"
+            @click="handleDelete"
+          >
+            {{ deleteText }}
+          </UiButton>
           <UiButton
             v-if="showCancel"
             variant="outline"
+            size="lg"
             :disabled="isSaving"
             @click="handleCancel"
           >
@@ -86,6 +108,7 @@ const handleCancel = () => {
           </UiButton>
           <UiButton
             variant="primary"
+            size="lg"
             :disabled="isSaving || saveDisabled"
             @click="handleSave"
           >

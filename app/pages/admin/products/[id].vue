@@ -26,6 +26,7 @@ const isSaving = ref(false)
 // 상품 데이터
 const product = ref({
   name: '',
+  costPrice: 0,
   description: '',
   detailContent: '', // 상세 페이지 HTML 콘텐츠
   categoryId: '', // 카테고리 ID
@@ -535,12 +536,11 @@ onMounted(() => {
     :is-saving="isSaving"
     :save-disabled="isLoading"
     show-cancel
+    :show-delete="isEditMode"
     @save="handleSave"
     @cancel="handleCancel"
+    @delete="handleDelete"
   >
-    <template v-if="isEditMode" #footer-left>
-      <UiButton variant="danger" :disabled="isSaving" @click="handleDelete">삭제</UiButton>
-    </template>
     <!-- 로딩 상태 -->
     <div v-if="isLoading" class="flex items-center justify-center py-20">
       <UiSpinner size="lg" />
@@ -659,7 +659,8 @@ onMounted(() => {
         <template #header>
           <h3 class="font-semibold text-neutral-900">가격 설정</h3>
         </template>
-        <div class="space-y-4">
+        <div class="space-y-4 ">
+          <div class="flex items-center gap-20">
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">
               판매가 <span class="text-error-500">*</span>
@@ -676,7 +677,23 @@ onMounted(() => {
             </div>
             <p class="text-xs text-neutral-500 mt-1">옵션별 추가금액은 옵션 조합에서 설정합니다.</p>
           </div>
-
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">
+              원가 <span class="text-error-500"></span>
+            </label>
+            <div class="relative w-full md:w-48">
+              <input
+                v-model.number="product.costPrice"
+                type="number"
+                min="0"
+                class="w-full px-3 py-2 pr-10 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                placeholder="0"
+              >
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500">원</span>
+            </div>
+            <p class="text-xs text-neutral-500 mt-1">옵션별 추가금액은 옵션 조합에서 설정합니다.</p>
+          </div>
+          </div>
           <!-- 할인 -->
           <div class="border-t border-neutral-200 pt-4">
             <div class="flex items-center justify-between p-3 bg-neutral-50 rounded-lg">
@@ -896,7 +913,7 @@ onMounted(() => {
         </div>
 
         <!-- 데스크톱 테이블 -->
-        <div class="hidden md:block overflow-x-auto -mx-4 md:-mx-6">
+        <div class="hidden md:block overflow-x-auto w-full">
           <table class="w-full">
             <thead>
               <tr class="border-b border-neutral-200 bg-neutral-50">
@@ -912,7 +929,6 @@ onMounted(() => {
                 <th class="text-left py-3 px-4 text-xs font-medium text-neutral-500 uppercase w-36">SKU *</th>
                 <th class="text-center py-3 px-4 text-xs font-medium text-neutral-500 uppercase w-24">재고</th>
                 <th class="text-center py-3 px-4 text-xs font-medium text-neutral-500 uppercase w-28">추가금액</th>
-                <th class="text-left py-3 px-4 text-xs font-medium text-neutral-500 uppercase w-44">이미지</th>
               </tr>
             </thead>
             <tbody>
@@ -963,41 +979,7 @@ onMounted(() => {
                     <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-neutral-400">원</span>
                   </div>
                 </td>
-                <td class="py-3 px-4">
-                  <div class="flex items-center gap-2">
-                    <div class="flex gap-1">
-                      <div
-                        v-for="(img, imgIndex) in variant.images.slice(0, 3)"
-                        :key="img.id"
-                        class="relative w-8 h-8 bg-neutral-100 rounded overflow-hidden group"
-                      >
-                        <img :src="img.preview" class="w-full h-full object-cover">
-                        <button
-                          type="button"
-                          class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center"
-                          @click="removeVariantImage(variant, imgIndex)"
-                        >
-                          <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                      <span v-if="variant.images.length > 3" class="w-8 h-8 bg-neutral-100 rounded flex items-center justify-center text-xs text-neutral-500">
-                        +{{ variant.images.length - 3 }}
-                      </span>
-                    </div>
-                    <label v-if="variant.images.length < 5" class="cursor-pointer text-xs text-primary-600 hover:text-primary-700">
-                      추가
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        class="hidden"
-                        @change="(e) => handleVariantImageUpload(e, variant)"
-                      >
-                    </label>
-                  </div>
-                </td>
+                
               </tr>
             </tbody>
           </table>

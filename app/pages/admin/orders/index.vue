@@ -67,16 +67,16 @@ const fetchOrders = async () => {
 
   // 전체 Mock 데이터
   const allOrders = [
-    { id: 1, orderNo: 'ORD20250108001', orderDate: '2025-01-08 14:30', userId: 'user001', userName: '김철수', phone: '010-1234-5678', address: '서울시 강남구 테헤란로 123', itemCount: 3, totalAmount: 189000, status: 'paid' },
-    { id: 2, orderNo: 'ORD20250108002', orderDate: '2025-01-08 15:20', userId: 'user002', userName: '이영희', phone: '010-2345-6789', address: '서울시 서초구 반포대로 45', itemCount: 1, totalAmount: 59000, status: 'preparing' },
-    { id: 3, orderNo: 'ORD20250108003', orderDate: '2025-01-08 16:45', userId: 'user003', userName: '박민수', phone: '010-3456-7890', address: '경기도 성남시 분당구 판교로 256', itemCount: 2, totalAmount: 128000, status: 'shipping' },
-    { id: 4, orderNo: 'ORD20250107001', orderDate: '2025-01-07 10:15', userId: 'user004', userName: '정수진', phone: '010-4567-8901', address: '서울시 마포구 월드컵북로 396', itemCount: 5, totalAmount: 345000, status: 'delivered' },
-    { id: 5, orderNo: 'ORD20250107002', orderDate: '2025-01-07 11:30', userId: 'user005', userName: '최동욱', phone: '010-5678-9012', address: '인천시 연수구 송도국제대로 123', itemCount: 1, totalAmount: 45000, status: 'cancelled' },
-    { id: 6, orderNo: 'ORD20250107003', orderDate: '2025-01-07 14:00', userId: 'user006', userName: '강미영', phone: '010-6789-0123', address: '서울시 송파구 올림픽로 300', itemCount: 4, totalAmount: 298000, status: 'delivered' },
-    { id: 7, orderNo: 'ORD20250106001', orderDate: '2025-01-06 09:30', userId: 'user007', userName: '윤서준', phone: '010-7890-1234', address: '경기도 고양시 일산서구 킨텍스로 217', itemCount: 2, totalAmount: 87000, status: 'delivered' },
-    { id: 8, orderNo: 'ORD20250106002', orderDate: '2025-01-06 13:45', userId: 'user008', userName: '임지현', phone: '010-8901-2345', address: '서울시 영등포구 여의대로 108', itemCount: 1, totalAmount: 156000, status: 'pending' },
-    { id: 9, orderNo: 'ORD20250106003', orderDate: '2025-01-06 17:20', userId: 'user009', userName: '한승우', phone: '010-9012-3456', address: '부산시 해운대구 센텀중앙로 79', itemCount: 3, totalAmount: 234000, status: 'delivered' },
-    { id: 10, orderNo: 'ORD20250105001', orderDate: '2025-01-05 11:00', userId: 'user010', userName: '오세영', phone: '010-0123-4567', address: '대구시 수성구 동대구로 123', itemCount: 2, totalAmount: 67000, status: 'delivered' },
+    { id: 1, orderNo: 'ORD20250108001', orderDate: '2025-01-08 14:30', userId: 'user001', userName: '김철수', phone: '010-1234-5678', address: '서울시 강남구 테헤란로 123', itemCount: 3, payment: '신용카드', totalAmount: 189000, status: 'paid' },
+    { id: 2, orderNo: 'ORD20250108002', orderDate: '2025-01-08 15:20', userId: 'user002', userName: '이영희', phone: '010-2345-6789', address: '서울시 서초구 반포대로 45', itemCount: 1, payment: '간편결제', totalAmount: 59000, status: 'preparing' },
+    { id: 3, orderNo: 'ORD20250108003', orderDate: '2025-01-08 16:45', userId: 'user003', userName: '박민수', phone: '010-3456-7890', address: '경기도 성남시 분당구 판교로 256', itemCount: 2, payment: '무통장입금', totalAmount: 128000, status: 'shipping' }, 
+    { id: 4, orderNo: 'ORD20250107001', orderDate: '2025-01-07 10:15', userId: 'user004', userName: '정수진', phone: '010-4567-8901', address: '서울시 마포구 월드컵북로 396', itemCount: 5, payment: '신용카드', totalAmount: 345000, status: 'delivered' },
+    { id: 5, orderNo: 'ORD20250107002', orderDate: '2025-01-07 11:30', userId: 'user005', userName: '최동욱', phone: '010-5678-9012', address: '인천시 연수구 송도국제대로 123', itemCount: 1, payment: '신용카드', totalAmount: 45000, status: 'cancelled' },
+    { id: 6, orderNo: 'ORD20250107003', orderDate: '2025-01-07 14:00', userId: 'user006', userName: '강미영', phone: '010-6789-0123', address: '서울시 송파구 올림픽로 300', itemCount: 4, payment: '간편결제', totalAmount: 298000, status: 'delivered' },
+    { id: 7, orderNo: 'ORD20250106001', orderDate: '2025-01-06 09:30', userId: 'user007', userName: '윤서준', phone: '010-7890-1234', address: '경기도 고양시 일산서구 킨텍스로 217', itemCount: 2, payment: '신용카드', totalAmount: 87000, status: 'delivered' },
+    { id: 8, orderNo: 'ORD20250106002', orderDate: '2025-01-06 13:45', userId: 'user008', userName: '임지현', phone: '010-8901-2345', address: '서울시 영등포구 여의대로 108', itemCount: 1, payment: '신용카드',  totalAmount: 156000, status: 'pending' },
+    { id: 9, orderNo: 'ORD20250106003', orderDate: '2025-01-06 17:20', userId: 'user009', userName: '한승우', phone: '010-9012-3456', address: '부산시 해운대구 센텀중앙로 79', itemCount: 3, payment: '신용카드', totalAmount: 234000, status: 'delivered' },
+    { id: 10, orderNo: 'ORD20250105001', orderDate: '2025-01-05 11:00', userId: 'user010', userName: '오세영', phone: '010-0123-4567', address: '대구시 수성구 동대구로 123', itemCount: 2, payment: '신용카드',  totalAmount: 67000, status: 'delivered' },
     // 더미 데이터 추가 (페이지네이션 테스트용)
     ...Array.from({ length: 90 }, (_, i) => ({
       id: 11 + i,
@@ -87,6 +87,7 @@ const fetchOrders = async () => {
       phone: `010-${String(1000 + i).slice(-4)}-${String(5000 + i).slice(-4)}`,
       address: `서울시 테스트구 테스트로 ${100 + i}`,
       itemCount: Math.floor(Math.random() * 5) + 1,
+      payment: ['신용카드', '간편결제', '무통장입금'][Math.floor(Math.random() * 3)],
       totalAmount: Math.floor(Math.random() * 500000) + 10000,
       status: ['pending', 'paid', 'preparing', 'shipping', 'delivered', 'cancelled'][Math.floor(Math.random() * 6)],
     })),
@@ -168,6 +169,7 @@ const tableColumns = [
   { key: 'phone', label: '연락처' },
   { key: 'address', label: '주소' },
   { key: 'itemCount', label: '건수', align: 'center' },
+  { key: 'payment', label: '결제수단', align: 'center' },
   { key: 'totalAmount', label: '주문금액', align: 'right' },
   { key: 'status', label: '상태', align: 'center' },
 ]
@@ -342,7 +344,10 @@ import { useUiStore } from '~/stores/ui'
       <template #cell-itemCount="{ item }">
         <span class="text-sm text-neutral-700">{{ item.itemCount }}건</span>
       </template>
-
+      <!-- 결제수단 -->
+      <template #cell-payment="{ item }">
+        <span class="text-sm text-neutral-600">{{ item.payment }}</span>
+      </template>
       <!-- 주문금액 -->
       <template #cell-totalAmount="{ item }">
         <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(item.totalAmount) }}</span>

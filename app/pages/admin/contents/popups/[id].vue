@@ -120,12 +120,11 @@ onMounted(() => {
     :description="isEditMode ? '팝업 정보를 수정합니다.' : '새 팝업을 등록합니다.'"
     :is-saving="isSaving"
     show-cancel
+    :show-delete="isEditMode"
     @save="handleSave"
     @cancel="handleCancel"
+    @delete="handleDelete"
   >
-    <template v-if="isEditMode" #footer-left>
-      <UiButton variant="danger" :disabled="isSaving" @click="handleDelete">삭제</UiButton>
-    </template>
 
     <div v-if="isLoading" class="flex items-center justify-center py-20">
       <UiSpinner size="lg" />

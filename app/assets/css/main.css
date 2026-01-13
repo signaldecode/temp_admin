@@ -54,21 +54,14 @@
     @apply outline-2 outline-offset-2 outline-primary-500;
   }
 
-  /* 스크롤바 스타일 */
-  ::-webkit-scrollbar {
-    @apply w-2 h-2;
+  /* 스크롤바 기본 숨김 */
+  * {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 
-  ::-webkit-scrollbar-track {
-    @apply bg-neutral-100;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    @apply bg-neutral-300 rounded-full;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-neutral-400;
+  *::-webkit-scrollbar {
+    display: none;
   }
 }
 
@@ -83,16 +76,6 @@
 
 /* Utilities Layer */
 @layer utilities {
-  /* Scrollbar hidden */
-  .scrollbar-hidden {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .scrollbar-hidden::-webkit-scrollbar {
-    display: none;
-  }
-
   /* Safe area for mobile */
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);

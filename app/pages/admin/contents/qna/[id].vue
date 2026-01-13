@@ -87,10 +87,7 @@ onMounted(() => fetchQna())
 </script>
 
 <template>
-  <LayoutFormPage title="문의 상세" description="고객 문의에 답변합니다." save-text="답변 저장" :is-saving="isSaving" show-cancel @save="handleSave" @cancel="handleCancel">
-    <template #footer-left>
-      <UiButton variant="danger" :disabled="isSaving" @click="handleDelete">삭제</UiButton>
-    </template>
+  <LayoutFormPage title="문의 상세" description="고객 문의에 답변합니다." save-text="답변 저장" :is-saving="isSaving" show-cancel show-delete @save="handleSave" @cancel="handleCancel" @delete="handleDelete">
 
     <div v-if="isLoading" class="flex items-center justify-center py-20"><UiSpinner size="lg" /></div>
 

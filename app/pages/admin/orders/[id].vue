@@ -377,9 +377,6 @@ const handleStatusChange = async () => {
       </button>
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-neutral-900">주문 상세</h1>
-        <UiButton v-if="order" variant="outline" size="sm" @click="openStatusModal">
-          상태 변경
-        </UiButton>
       </div>
     </div>
 
@@ -457,8 +454,13 @@ const handleStatusChange = async () => {
 
         <!-- 배송지 정보 -->
         <UiCard>
-          <template #header>
+          <template #header >
+            <div class="flex items-center justify-between">
             <h3 class="font-semibold text-neutral-900">배송지 정보</h3>
+            <UiButton v-if="order" variant="primary" size="lg" @click="openStatusModal">
+          배송 상태 변경
+        </UiButton>
+        </div>
           </template>
           <UiDescriptionList :items="shippingInfoItems">
             <template #value-address>
@@ -469,11 +471,14 @@ const handleStatusChange = async () => {
               {{ getCarrierLabel(order.shipping.carrier) }}
               <span class="font-mono ml-1">{{ order.shipping.trackingNumber }}</span>
             </template>
+            
           </UiDescriptionList>
+          
+
         </UiCard>
 
         <!-- 쿠폰/적립금 정보 -->
-        <UiCard>
+        <!-- <UiCard>
           <template #header>
             <h3 class="font-semibold text-neutral-900">할인/적립금 정보</h3>
           </template>
@@ -497,7 +502,7 @@ const handleStatusChange = async () => {
               <dd class="text-sm text-primary-600 font-medium">+{{ formatCurrency(order.discount.point.earned) }}</dd>
             </div>
           </dl>
-        </UiCard>
+        </UiCard> -->
       </div>
 
       <!-- 주문 상품 목록 -->
@@ -581,14 +586,14 @@ const handleStatusChange = async () => {
               <dt class="text-neutral-500">배송비</dt>
               <dd class="text-neutral-900">{{ order.amounts.shippingFee === 0 ? '무료' : formatCurrency(order.amounts.shippingFee) }}</dd>
             </div>
-            <div v-if="order.amounts.couponDiscount > 0" class="flex justify-between text-sm">
+            <!-- <div v-if="order.amounts.couponDiscount > 0" class="flex justify-between text-sm">
               <dt class="text-neutral-500">쿠폰 할인</dt>
               <dd class="text-error-600">-{{ formatCurrency(order.amounts.couponDiscount) }}</dd>
             </div>
             <div v-if="order.amounts.pointUsed > 0" class="flex justify-between text-sm">
               <dt class="text-neutral-500">적립금 사용</dt>
               <dd class="text-error-600">-{{ formatCurrency(order.amounts.pointUsed) }}</dd>
-            </div>
+            </div> -->
             <div class="flex justify-between pt-2 border-t border-neutral-300">
               <dt class="text-base font-semibold text-neutral-900">결제 금액</dt>
               <dd class="text-lg font-bold text-primary-600">{{ formatCurrency(order.amounts.totalAmount) }}</dd>
@@ -598,7 +603,7 @@ const handleStatusChange = async () => {
       </UiCard>
 
       <!-- 관리자 메모 히스토리 -->
-      <UiCard class="mb-6">
+      <!-- <UiCard class="mb-6">
         <template #header>
           <h3 class="font-semibold text-neutral-900">관리자 메모</h3>
         </template>
@@ -612,7 +617,7 @@ const handleStatusChange = async () => {
           @edit="handleEditMemo"
           @delete="handleDeleteMemo"
         />
-      </UiCard>
+      </UiCard> -->
 
       <!-- 주문 이력 -->
       <UiCard>

@@ -60,7 +60,7 @@ export default defineNuxtConfig({
       theme_color: '#1e40af',
       background_color: '#f8fafc',
       display: 'standalone',
-      start_url: '/admin',
+      start_url: '/admin/orders',
       icons: [
         {
           src: '/icons/icon-192x192.svg',
@@ -92,6 +92,8 @@ export default defineNuxtConfig({
 
   // 라우터 설정
   routeRules: {
+    // 루트 접근 시 주문 목록으로 리다이렉트
+    '/': { redirect: '/admin/orders' },
     // Admin 페이지는 CSR (인증 필요)
     '/admin/**': { ssr: false },
     '/login': { ssr: false },
