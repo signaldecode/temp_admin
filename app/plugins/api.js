@@ -1,6 +1,7 @@
 /**
  * API Plugin
  * API 호출 유틸리티를 전역으로 제공
+ * - HttpOnly Cookie 기반 인증 (credentials: include)
  */
 
 export default defineNuxtPlugin(() => {

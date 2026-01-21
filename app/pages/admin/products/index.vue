@@ -1,51 +1,50 @@
 <script setup>
 /**
  * 상품 목록 페이지
- * - 검색: 상품명, SKU
- * - 필터: 상태, 할인여부, 신상/인기/추천
+ * - 검색: 상품명, 상품ID
+ * - 필터: 상태, 할인여부, 태그
  * - 벌크 선택 + 상태 변경
  * - 페이지네이션 (30개)
  */
 
 import { useUiStore } from '~/stores/ui'
+import { useApi } from '~/composables/useApi'
 
 const router = useRouter()
 const uiStore = useUiStore()
+const { get } = useApi()
 
 // 검색 필터
 const filterStatus = ref('')
 const filterDiscount = ref('')
 const filterTag = ref('')
-const searchType = ref('name')
+const searchType = ref('PRODUCT_NAME')
 const searchKeyword = ref('')
 
 const searchOptions = [
-  { value: 'name', label: '상품명' },
-  { value: 'id', label: '상품ID' },
+  { value: 'PRODUCT_NAME', label: '상품명' },
+  { value: 'PRODUCT_ID', label: '상품ID' },
 ]
 
 const statusOptions = [
-  { value: 'active', label: '판매중' },
-  { value: 'inactive', label: '판매중지' },
-  { value: 'soldout', label: '품절' },
+  { value: 'ON_SALE', label: '판매중' },
+  { value: 'DISCONTINUED', label: '판매중지' },
+  { value: 'SOLD_OUT', label: '품절' },
 ]
 
 const discountOptions = [
-  { value: 'yes', label: '할인중' },
-  { value: 'no', label: '할인없음' },
+  { value: 'true', label: '할인중' },
+  { value: 'false', label: '할인없음' },
 ]
 
-const tagOptions = [
-  { value: 'new', label: '신상' },
-  { value: 'popular', label: '인기' },
-  { value: 'recommend', label: '추천' },
-]
+// TODO: 태그 목록 API 연동 시 동적으로 변경
+const tagOptions = ref([])
 
-// 상태 매핑
+// 상태 매핑 (API 응답값 기준)
 const statusMap = {
-  active: { label: '판매중', variant: 'success' },
-  inactive: { label: '판매중지', variant: 'neutral' },
-  soldout: { label: '품절', variant: 'error' },
+  ON_SALE: { label: '판매중', variant: 'success' },
+  DISCONTINUED: { label: '판매중지', variant: 'neutral' },
+  SOLD_OUT: { label: '품절', variant: 'error' },
 }
 
 // 로딩 상태
@@ -67,197 +66,50 @@ const selectedIds = ref([])
 const showStatusModal = ref(false)
 const selectedStatus = ref('')
 
-// Mock 데이터 로드
+// 상품 목록 조회 API
 const fetchProducts = async () => {
   isLoading.value = true
 
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  try {
+    // API 파라미터 구성
+    const params = {
+      page: currentPage.value,
+      size: perPage,
+    }
 
-  // 카테고리 목록
-  const categoryList = [
-    { id: 'cat-1-1', name: '상의', parent: '의류' },
-    { id: 'cat-1-2', name: '하의', parent: '의류' },
-    { id: 'cat-1-3', name: '아우터', parent: '의류' },
-    { id: 'cat-2-1', name: '운동화', parent: '신발' },
-    { id: 'cat-2-2', name: '구두', parent: '신발' },
-    { id: 'cat-3-1', name: '백팩', parent: '가방' },
-    { id: 'cat-4-1', name: '모자', parent: '액세서리' },
-  ]
+    // 필터 적용 (빈 값이 아닐 때만)
+    if (filterStatus.value) {
+      params.status = filterStatus.value
+    }
+    if (filterDiscount.value) {
+      params.hasDiscount = filterDiscount.value
+    }
+    if (filterTag.value) {
+      params.tagId = filterTag.value
+    }
+    if (searchKeyword.value) {
+      params.searchType = searchType.value
+      params.keyword = searchKeyword.value
+    }
 
-  // 전체 Mock 데이터
-  const allProducts = [
-    {
-      id: 1,
-      name: '베이직 코튼 티셔츠',
-      categoryId: 'cat-1-1',
-      categoryName: '상의',
-      thumbnail: '/images/products/1.jpg',
-      price: 29000,
-      discountType: 'percent',
-      discountValue: 10,
-      discountPrice: 26100,
-      stock: 150,
-      status: 'active',
-      isNew: true,
-      isPopular: false,
-      isRecommend: true,
-      optionCount: 4,
-      createdAt: '2025-01-08',
-    },
-    {
-      id: 2,
-      name: '슬림핏 데님 팬츠',
-      categoryId: 'cat-1-2',
-      categoryName: '하의',
-      thumbnail: '/images/products/2.jpg',
-      price: 59000,
-      discountType: null,
-      discountValue: 0,
-      discountPrice: 59000,
-      stock: 85,
-      status: 'active',
-      isNew: false,
-      isPopular: true,
-      isRecommend: false,
-      optionCount: 3,
-      createdAt: '2025-01-07',
-    },
-    {
-      id: 3,
-      name: '오버사이즈 후드 집업',
-      categoryId: 'cat-1-3',
-      categoryName: '아우터',
-      thumbnail: '/images/products/3.jpg',
-      price: 89000,
-      discountType: 'amount',
-      discountValue: 10000,
-      discountPrice: 79000,
-      stock: 0,
-      status: 'soldout',
-      isNew: false,
-      isPopular: true,
-      isRecommend: true,
-      optionCount: 5,
-      createdAt: '2025-01-06',
-    },
-    {
-      id: 4,
-      name: '캐시미어 블렌드 니트',
-      categoryId: 'cat-1-1',
-      categoryName: '상의',
-      thumbnail: '/images/products/4.jpg',
-      price: 129000,
-      discountType: 'percent',
-      discountValue: 20,
-      discountPrice: 103200,
-      stock: 42,
-      status: 'active',
-      isNew: true,
-      isPopular: false,
-      isRecommend: false,
-      optionCount: 3,
-      createdAt: '2025-01-05',
-    },
-    {
-      id: 5,
-      name: '린넨 블렌드 셔츠',
-      categoryId: 'cat-1-1',
-      categoryName: '상의',
-      thumbnail: '/images/products/5.jpg',
-      price: 69000,
-      discountType: null,
-      discountValue: 0,
-      discountPrice: 69000,
-      stock: 200,
-      status: 'inactive',
-      isNew: false,
-      isPopular: false,
-      isRecommend: false,
-      optionCount: 2,
-      createdAt: '2025-01-04',
-    },
-    // 더미 데이터 추가
-    ...Array.from({ length: 95 }, (_, i) => {
-      const cat = categoryList[i % categoryList.length]
-      return {
-        id: 6 + i,
-        name: `테스트 상품 ${6 + i}`,
-        categoryId: cat.id,
-        categoryName: cat.name,
-        thumbnail: `/images/products/${(i % 5) + 1}.jpg`,
-        price: Math.floor(Math.random() * 150000) + 10000,
-        discountType: Math.random() > 0.6 ? (Math.random() > 0.5 ? 'percent' : 'amount') : null,
-        discountValue: Math.random() > 0.6 ? (Math.random() > 0.5 ? Math.floor(Math.random() * 30) + 5 : Math.floor(Math.random() * 20000) + 1000) : 0,
-        discountPrice: 0,
-        stock: Math.floor(Math.random() * 300),
-        status: ['active', 'active', 'active', 'inactive', 'soldout'][Math.floor(Math.random() * 5)],
-        isNew: Math.random() > 0.7,
-        isPopular: Math.random() > 0.8,
-        isRecommend: Math.random() > 0.75,
-        optionCount: Math.floor(Math.random() * 5) + 1,
-        createdAt: `2025-01-${String(Math.floor(Math.random() * 8) + 1).padStart(2, '0')}`,
-      }
-    }).map((p) => {
-      // 할인가 계산
-      if (p.discountType === 'percent') {
-        p.discountPrice = Math.floor(p.price * (1 - p.discountValue / 100))
-      } else if (p.discountType === 'amount') {
-        p.discountPrice = p.price - p.discountValue
-      } else {
-        p.discountPrice = p.price
-      }
-      return p
-    }),
-  ]
+    const response = await get('/admin/products', params)
 
-  // 상태 필터링
-  let filtered = allProducts
-  if (filterStatus.value) {
-    filtered = filtered.filter((p) => p.status === filterStatus.value)
-  }
+    // 응답 데이터 매핑
+    products.value = response.data.content
+    totalItems.value = response.data.total_elements
 
-  // 할인 필터링
-  if (filterDiscount.value === 'yes') {
-    filtered = filtered.filter((p) => p.discountType !== null)
-  } else if (filterDiscount.value === 'no') {
-    filtered = filtered.filter((p) => p.discountType === null)
-  }
-
-  // 태그 필터링
-  if (filterTag.value === 'new') {
-    filtered = filtered.filter((p) => p.isNew)
-  } else if (filterTag.value === 'popular') {
-    filtered = filtered.filter((p) => p.isPopular)
-  } else if (filterTag.value === 'recommend') {
-    filtered = filtered.filter((p) => p.isRecommend)
-  }
-
-  // 검색 필터링
-  if (searchKeyword.value) {
-    const keyword = searchKeyword.value.toLowerCase()
-    filtered = filtered.filter((p) => {
-      switch (searchType.value) {
-        case 'name':
-          return p.name.toLowerCase().includes(keyword)
-        case 'id':
-          return String(p.id).includes(keyword)
-        default:
-          return true
-      }
+    // 페이지 변경 시 선택 초기화
+    selectedIds.value = []
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '상품 목록을 불러오는데 실패했습니다.',
     })
+    products.value = []
+    totalItems.value = 0
+  } finally {
+    isLoading.value = false
   }
-
-  totalItems.value = filtered.length
-
-  // 페이지네이션
-  const start = (currentPage.value - 1) * perPage
-  const end = start + perPage
-  products.value = filtered.slice(start, end)
-
-  // 페이지 변경 시 선택 초기화
-  selectedIds.value = []
-
-  isLoading.value = false
 }
 
 // 금액 포맷
@@ -265,13 +117,9 @@ const formatCurrency = (value) => {
   return new Intl.NumberFormat('ko-KR').format(value) + '원'
 }
 
-// 할인율/금액 포맷
-const formatDiscount = (product) => {
-  if (!product.discountType) return '-'
-  if (product.discountType === 'percent') {
-    return `-${product.discountValue}%`
-  }
-  return `-${formatCurrency(product.discountValue)}`
+// 할인 여부 확인
+const hasDiscount = (product) => {
+  return product.regularPrice > product.salePrice
 }
 
 // 검색 실행
@@ -300,12 +148,12 @@ const handlePageChange = (page) => {
 // 테이블 컬럼 정의
 const tableColumns = [
   { key: 'id', label: 'ID', width: 'w-16', align: 'center' },
-  { key: 'thumbnail', label: '이미지', width: 'w-16' },
+  { key: 'thumbnailUrl', label: '이미지', width: 'w-16' },
   { key: 'name', label: '상품명' },
-  { key: 'category', label: '카테고리' },
-  { key: 'price', label: '판매가', align: 'right' },
-  { key: 'discount', label: '할인', align: 'center' },
-  { key: 'stock', label: '재고', align: 'center' },
+  { key: 'categoryName', label: '카테고리' },
+  { key: 'salePrice', label: '판매가', align: 'right' },
+  { key: 'discountRate', label: '할인', align: 'center' },
+  { key: 'stockQuantity', label: '재고', align: 'center' },
   { key: 'tags', label: '태그', align: 'center' },
   { key: 'status', label: '상태', align: 'center' },
 ]
@@ -410,6 +258,7 @@ onMounted(() => {
             </option>
           </select>
           <select
+            v-if="tagOptions.length > 0"
             v-model="filterTag"
             class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           >
@@ -475,9 +324,15 @@ onMounted(() => {
       </template>
 
       <!-- 썸네일 -->
-      <template #cell-thumbnail="{ item }">
+      <template #cell-thumbnailUrl="{ item }">
         <div class="w-12 h-12 bg-neutral-100 rounded-lg overflow-hidden flex-shrink-0">
-          <div class="w-full h-full bg-neutral-200 flex items-center justify-center text-neutral-400 text-xs">
+          <img
+            v-if="item.thumbnailUrl"
+            :src="item.thumbnailUrl"
+            :alt="item.name"
+            class="w-full h-full object-cover"
+          >
+          <div v-else class="w-full h-full bg-neutral-200 flex items-center justify-center text-neutral-400 text-xs">
             IMG
           </div>
         </div>
@@ -492,52 +347,54 @@ onMounted(() => {
       </template>
 
       <!-- 카테고리 -->
-      <template #cell-category="{ item }">
+      <template #cell-categoryName="{ item }">
         <span class="text-sm text-neutral-600">{{ item.categoryName }}</span>
       </template>
 
       <!-- 판매가 -->
-      <template #cell-price="{ item }">
+      <template #cell-salePrice="{ item }">
         <div class="text-right">
-          <p v-if="item.discountType" class="text-xs text-neutral-400 line-through">
-            {{ formatCurrency(item.price) }}
+          <p v-if="hasDiscount(item)" class="text-xs text-neutral-400 line-through">
+            {{ formatCurrency(item.regularPrice) }}
           </p>
           <p class="text-sm font-medium text-neutral-900">
-            {{ formatCurrency(item.discountPrice) }}
+            {{ formatCurrency(item.salePrice) }}
           </p>
         </div>
       </template>
 
       <!-- 할인 -->
-      <template #cell-discount="{ item }">
+      <template #cell-discountRate="{ item }">
         <span
-          v-if="item.discountType"
+          v-if="item.discountRate"
           class="text-sm font-medium text-error-600"
         >
-          {{ formatDiscount(item) }}
+          {{ item.discountRate }}
         </span>
         <span v-else class="text-sm text-neutral-400">-</span>
       </template>
 
       <!-- 재고 -->
-      <template #cell-stock="{ item }">
+      <template #cell-stockQuantity="{ item }">
         <span
           :class="[
             'text-sm font-medium',
-            item.stock === 0 ? 'text-error-600' : item.stock < 10 ? 'text-warning-600' : 'text-neutral-700',
+            item.stockQuantity === 0 ? 'text-error-600' : item.stockQuantity < 10 ? 'text-warning-600' : 'text-neutral-700',
           ]"
         >
-          {{ item.stock }}
+          {{ item.stockQuantity }}
         </span>
       </template>
 
       <!-- 태그 -->
       <template #cell-tags="{ item }">
         <div class="flex flex-wrap gap-1 justify-center">
-          <UiBadge v-if="item.isNew" variant="info" size="sm">신상</UiBadge>
-          <UiBadge v-if="item.isPopular" variant="warning" size="sm">인기</UiBadge>
-          <UiBadge v-if="item.isRecommend" variant="success" size="sm">추천</UiBadge>
-          <span v-if="!item.isNew && !item.isPopular && !item.isRecommend" class="text-neutral-400">-</span>
+          <template v-if="item.tags && item.tags.length > 0">
+            <UiBadge v-for="tag in item.tags" :key="tag" variant="info" size="sm">
+              {{ tag }}
+            </UiBadge>
+          </template>
+          <span v-else class="text-neutral-400">-</span>
         </div>
       </template>
 
@@ -553,7 +410,13 @@ onMounted(() => {
         <div class="flex gap-3">
           <!-- 썸네일 -->
           <div class="w-16 h-16 bg-neutral-100 rounded-lg overflow-hidden flex-shrink-0">
-            <div class="w-full h-full bg-neutral-200 flex items-center justify-center text-neutral-400 text-xs">
+            <img
+              v-if="item.thumbnailUrl"
+              :src="item.thumbnailUrl"
+              :alt="item.name"
+              class="w-full h-full object-cover"
+            >
+            <div v-else class="w-full h-full bg-neutral-200 flex items-center justify-center text-neutral-400 text-xs">
               IMG
             </div>
           </div>
@@ -571,24 +434,24 @@ onMounted(() => {
               <span>{{ item.categoryName }}</span>
             </div>
             <div class="flex items-center gap-2">
-              <span v-if="item.discountType" class="text-xs text-neutral-400 line-through">
-                {{ formatCurrency(item.price) }}
+              <span v-if="hasDiscount(item)" class="text-xs text-neutral-400 line-through">
+                {{ formatCurrency(item.regularPrice) }}
               </span>
               <span class="text-sm font-semibold text-neutral-900">
-                {{ formatCurrency(item.discountPrice) }}
+                {{ formatCurrency(item.salePrice) }}
               </span>
-              <span v-if="item.discountType" class="text-xs font-medium text-error-600">
-                {{ formatDiscount(item) }}
+              <span v-if="item.discountRate" class="text-xs font-medium text-error-600">
+                {{ item.discountRate }}
               </span>
             </div>
             <div class="flex items-center gap-2 mt-1">
-              <span class="text-xs text-neutral-500">재고 {{ item.stock }}</span>
+              <span class="text-xs text-neutral-500">재고 {{ item.stockQuantity }}</span>
               <span class="text-xs text-neutral-500">옵션 {{ item.optionCount }}개</span>
             </div>
-            <div v-if="item.isNew || item.isPopular || item.isRecommend" class="flex gap-1 mt-2">
-              <UiBadge v-if="item.isNew" variant="info" size="sm">신상</UiBadge>
-              <UiBadge v-if="item.isPopular" variant="warning" size="sm">인기</UiBadge>
-              <UiBadge v-if="item.isRecommend" variant="success" size="sm">추천</UiBadge>
+            <div v-if="item.tags && item.tags.length > 0" class="flex gap-1 mt-2">
+              <UiBadge v-for="tag in item.tags" :key="tag" variant="info" size="sm">
+                {{ tag }}
+              </UiBadge>
             </div>
           </div>
         </div>

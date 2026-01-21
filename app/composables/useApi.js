@@ -188,7 +188,11 @@ function getDefaultErrorMessage(status) {
 
 // Store imports (lazy)
 function useAuthStore() {
-  return useNuxtApp().$pinia._s.get('auth')
+  const pinia = useNuxtApp().$pinia
+  if (pinia.state.value.auth) {
+    return pinia._s.get('auth')
+  }
+  return { reset: () => {} }
 }
 
 function useTenantStore() {

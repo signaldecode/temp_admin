@@ -5,23 +5,27 @@
  * - 벌크 선택 + 상태 변경
  * - 페이지네이션 (30개)
  */
+import { useUiStore } from '~/stores/ui'
 
 const router = useRouter()
 const route = useRoute()
+const { $api } = useNuxtApp()
+const uiStore = useUiStore()
 
 // 검색 필터
 const filterStatus = ref('')
-const searchType = ref('orderNo')
+const searchType = ref('ORDER_NUMBER')
 const searchKeyword = ref('')
 
 const searchOptions = [
-  { value: 'orderNo', label: '주문번호' },
-  { value: 'userId', label: '유저ID' },
-  { value: 'phone', label: '연락처' },
+  { value: 'ORDER_NUMBER', label: '주문번호' },
+  { value: 'USER_ID', label: '유저ID' },
+  { value: 'PHONE', label: '연락처' },
 ]
 
 // 로딩 상태
 const isLoading = ref(false)
+const error = ref(null)
 
 // 페이지네이션
 const currentPage = ref(1)
@@ -38,95 +42,88 @@ const selectedIds = ref([])
 // 상태 변경 모달
 const showStatusModal = ref(false)
 const selectedStatus = ref('')
+const isChangingStatus = ref(false)
 
 // 주문 상태 옵션
 const statusOptions = [
-  { value: 'pending', label: '결제대기' },
-  { value: 'paid', label: '결제완료' },
-  { value: 'preparing', label: '상품준비중' },
-  { value: 'shipping', label: '배송중' },
-  { value: 'delivered', label: '배송완료' },
-  { value: 'cancelled', label: '취소' },
+  { value: 'PENDING', label: '결제대기' },
+  { value: 'PAID', label: '결제완료' },
+  { value: 'PREPARING', label: '상품준비중' },
+  { value: 'SHIPPING', label: '배송중' },
+  { value: 'DELIVERED', label: '배송완료' },
+  { value: 'CANCELLED', label: '취소' },
+  { value: 'REFUNDED', label: '환불' },
 ]
 
 // 주문 상태 매핑
 const statusMap = {
-  pending: { label: '결제대기', variant: 'warning' },
-  paid: { label: '결제완료', variant: 'info' },
-  preparing: { label: '상품준비중', variant: 'primary' },
-  shipping: { label: '배송중', variant: 'info' },
-  delivered: { label: '배송완료', variant: 'success' },
-  cancelled: { label: '취소', variant: 'error' },
+  PENDING: { label: '결제대기', variant: 'neutral' },
+  PAID: { label: '결제완료', variant: 'primary' },
+  PREPARING: { label: '상품준비중', variant: 'warning' },
+  SHIPPING: { label: '배송중', variant: 'info' },
+  DELIVERED: { label: '배송완료', variant: 'success' },
+  CANCELLED: { label: '취소', variant: 'error' },
+  REFUNDED: { label: '환불', variant: 'error' },
 }
 
-// Mock 데이터 로드
+// 결제수단 매핑
+const paymentMethodMap = {
+  CARD: '신용카드',
+  BANK_TRANSFER: '계좌이체',
+  VIRTUAL_ACCOUNT: '가상계좌',
+  PHONE: '휴대폰',
+  KAKAO_PAY: '카카오페이',
+  NAVER_PAY: '네이버페이',
+  POINT: '포인트',
+}
+
+// 날짜 포맷
+const formatDate = (dateString) => {
+  if (!dateString) return '-'
+  const date = new Date(dateString)
+  return date.toLocaleString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+// API 데이터 로드
 const fetchOrders = async () => {
   isLoading.value = true
+  error.value = null
 
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  try {
+    const params = {
+      page: currentPage.value,
+      size: perPage,
+    }
 
-  // 전체 Mock 데이터
-  const allOrders = [
-    { id: 1, orderNo: 'ORD20250108001', orderDate: '2025-01-08 14:30', userId: 'user001', userName: '김철수', phone: '010-1234-5678', address: '서울시 강남구 테헤란로 123', itemCount: 3, payment: '신용카드', totalAmount: 189000, status: 'paid' },
-    { id: 2, orderNo: 'ORD20250108002', orderDate: '2025-01-08 15:20', userId: 'user002', userName: '이영희', phone: '010-2345-6789', address: '서울시 서초구 반포대로 45', itemCount: 1, payment: '간편결제', totalAmount: 59000, status: 'preparing' },
-    { id: 3, orderNo: 'ORD20250108003', orderDate: '2025-01-08 16:45', userId: 'user003', userName: '박민수', phone: '010-3456-7890', address: '경기도 성남시 분당구 판교로 256', itemCount: 2, payment: '무통장입금', totalAmount: 128000, status: 'shipping' }, 
-    { id: 4, orderNo: 'ORD20250107001', orderDate: '2025-01-07 10:15', userId: 'user004', userName: '정수진', phone: '010-4567-8901', address: '서울시 마포구 월드컵북로 396', itemCount: 5, payment: '신용카드', totalAmount: 345000, status: 'delivered' },
-    { id: 5, orderNo: 'ORD20250107002', orderDate: '2025-01-07 11:30', userId: 'user005', userName: '최동욱', phone: '010-5678-9012', address: '인천시 연수구 송도국제대로 123', itemCount: 1, payment: '신용카드', totalAmount: 45000, status: 'cancelled' },
-    { id: 6, orderNo: 'ORD20250107003', orderDate: '2025-01-07 14:00', userId: 'user006', userName: '강미영', phone: '010-6789-0123', address: '서울시 송파구 올림픽로 300', itemCount: 4, payment: '간편결제', totalAmount: 298000, status: 'delivered' },
-    { id: 7, orderNo: 'ORD20250106001', orderDate: '2025-01-06 09:30', userId: 'user007', userName: '윤서준', phone: '010-7890-1234', address: '경기도 고양시 일산서구 킨텍스로 217', itemCount: 2, payment: '신용카드', totalAmount: 87000, status: 'delivered' },
-    { id: 8, orderNo: 'ORD20250106002', orderDate: '2025-01-06 13:45', userId: 'user008', userName: '임지현', phone: '010-8901-2345', address: '서울시 영등포구 여의대로 108', itemCount: 1, payment: '신용카드',  totalAmount: 156000, status: 'pending' },
-    { id: 9, orderNo: 'ORD20250106003', orderDate: '2025-01-06 17:20', userId: 'user009', userName: '한승우', phone: '010-9012-3456', address: '부산시 해운대구 센텀중앙로 79', itemCount: 3, payment: '신용카드', totalAmount: 234000, status: 'delivered' },
-    { id: 10, orderNo: 'ORD20250105001', orderDate: '2025-01-05 11:00', userId: 'user010', userName: '오세영', phone: '010-0123-4567', address: '대구시 수성구 동대구로 123', itemCount: 2, payment: '신용카드',  totalAmount: 67000, status: 'delivered' },
-    // 더미 데이터 추가 (페이지네이션 테스트용)
-    ...Array.from({ length: 90 }, (_, i) => ({
-      id: 11 + i,
-      orderNo: `ORD20250${String(Math.floor(Math.random() * 8) + 1).padStart(2, '0')}${String(100 + i).padStart(3, '0')}`,
-      orderDate: `2025-01-0${Math.floor(Math.random() * 8) + 1} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}`,
-      userId: `user${String(Math.floor(Math.random() * 100) + 1).padStart(3, '0')}`,
-      userName: `테스트 회원 ${11 + i}`,
-      phone: `010-${String(1000 + i).slice(-4)}-${String(5000 + i).slice(-4)}`,
-      address: `서울시 테스트구 테스트로 ${100 + i}`,
-      itemCount: Math.floor(Math.random() * 5) + 1,
-      payment: ['신용카드', '간편결제', '무통장입금'][Math.floor(Math.random() * 3)],
-      totalAmount: Math.floor(Math.random() * 500000) + 10000,
-      status: ['pending', 'paid', 'preparing', 'shipping', 'delivered', 'cancelled'][Math.floor(Math.random() * 6)],
-    })),
-  ]
+    if (filterStatus.value) {
+      params.status = filterStatus.value
+    }
 
-  // 상태 필터링
-  let filtered = allOrders
-  if (filterStatus.value) {
-    filtered = filtered.filter((order) => order.status === filterStatus.value)
+    if (searchKeyword.value) {
+      params.searchType = searchType.value
+      params.keyword = searchKeyword.value
+    }
+
+    const response = await $api.get('/admin/orders', params)
+    const data = response.data
+
+    orders.value = data.content || []
+    totalItems.value = data.total_elements || 0
+
+    // 페이지 변경 시 선택 초기화
+    selectedIds.value = []
+  } catch (err) {
+    console.error('Orders fetch error:', err)
+    error.value = err.data?.message || err.message || '주문 목록을 불러오는데 실패했습니다.'
+  } finally {
+    isLoading.value = false
   }
-
-  // 검색 필터링
-  if (searchKeyword.value) {
-    const keyword = searchKeyword.value.toLowerCase()
-    filtered = filtered.filter((order) => {
-      switch (searchType.value) {
-        case 'orderNo':
-          return order.orderNo.toLowerCase().includes(keyword)
-        case 'userId':
-          return order.userId.toLowerCase().includes(keyword)
-        case 'phone':
-          return order.phone.replace(/-/g, '').includes(keyword.replace(/-/g, ''))
-        default:
-          return true
-      }
-    })
-  }
-
-  totalItems.value = filtered.length
-
-  // 페이지네이션
-  const start = (currentPage.value - 1) * perPage
-  const end = start + perPage
-  orders.value = filtered.slice(start, end)
-
-  // 페이지 변경 시 선택 초기화
-  selectedIds.value = []
-
-  isLoading.value = false
 }
 
 // 금액 포맷
@@ -149,7 +146,7 @@ const handleSearch = () => {
 // 검색 초기화
 const handleReset = () => {
   filterStatus.value = ''
-  searchType.value = 'orderNo'
+  searchType.value = 'ORDER_NUMBER'
   searchKeyword.value = ''
   currentPage.value = 1
   fetchOrders()
@@ -163,14 +160,14 @@ const handlePageChange = (page) => {
 
 // 테이블 컬럼 정의
 const tableColumns = [
-  { key: 'orderNo', label: '주문번호' },
-  { key: 'orderDate', label: '주문일시' },
-  { key: 'userId', label: '유저ID' },
+  { key: 'orderNumber', label: '주문번호' },
+  { key: 'orderedAt', label: '주문일시' },
+  { key: 'userId', label: '유저ID', align: 'center' },
   { key: 'phone', label: '연락처' },
   { key: 'address', label: '주소' },
   { key: 'itemCount', label: '건수', align: 'center' },
-  { key: 'payment', label: '결제수단', align: 'center' },
-  { key: 'totalAmount', label: '주문금액', align: 'right' },
+  { key: 'paymentMethod', label: '결제수단', align: 'center' },
+  { key: 'grandTotal', label: '주문금액', align: 'right' },
   { key: 'status', label: '상태', align: 'center' },
 ]
 
@@ -201,29 +198,37 @@ const openStatusModal = () => {
 
 // 상태 변경 실행
 const handleStatusChange = async () => {
-  if (!selectedStatus.value) return
+  if (!selectedStatus.value || selectedIds.value.length === 0) return
 
-  // 실제로는 API 호출
-  console.log('상태 변경:', selectedIds.value, '→', selectedStatus.value)
+  isChangingStatus.value = true
 
-  // Mock: 로컬 데이터 업데이트
-  orders.value = orders.value.map((order) => {
-    if (selectedIds.value.includes(order.id)) {
-      return { ...order, status: selectedStatus.value }
-    }
-    return order
-  })
+  try {
+    const response = await $api.patch('/admin/orders/statuses', {
+      orderIds: selectedIds.value,
+      status: selectedStatus.value,
+    })
 
-  const changedCount = selectedIds.value.length
-  showStatusModal.value = false
-  selectedIds.value = []
+    const changedCount = response.data || selectedIds.value.length
 
-  // 성공 알림
-  const uiStore = useUiStore()
-  uiStore.showToast({
-    type: 'success',
-    message: `${changedCount}건의 주문 상태가 변경되었습니다.`,
-  })
+    showStatusModal.value = false
+    selectedIds.value = []
+
+    uiStore.showToast({
+      type: 'success',
+      message: `${changedCount}건의 주문 상태가 변경되었습니다.`,
+    })
+
+    // 목록 새로고침
+    fetchOrders()
+  } catch (err) {
+    console.error('Status change error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || err.message || '상태 변경에 실패했습니다.',
+    })
+  } finally {
+    isChangingStatus.value = false
+  }
 }
 
 // 주문 상세로 이동
@@ -233,15 +238,12 @@ const goToDetail = (orderId) => {
 
 // 초기 로드
 onMounted(() => {
-  if (route.query.type) searchType.value = route.query.type
+  if (route.query.searchType) searchType.value = route.query.searchType
   if (route.query.keyword) searchKeyword.value = route.query.keyword
   if (route.query.status) filterStatus.value = route.query.status
   if (route.query.page) currentPage.value = parseInt(route.query.page) || 1
   fetchOrders()
 })
-
-// import
-import { useUiStore } from '~/stores/ui'
 </script>
 
 <template>
@@ -298,8 +300,14 @@ import { useUiStore } from '~/stores/ui'
     </template>
 
     <!-- Loading -->
-    <div v-if="isLoading" class="flex-1 flex items-center justify-center bg-white rounded-lg border border-neutral-200">
+    <div v-if="isLoading" class="flex-1 flex items-center justify-center bg-white rounded-lg border border-neutral-200 min-h-96">
       <UiSpinner size="lg" />
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="error" class="flex-1 flex flex-col items-center justify-center bg-white rounded-lg border border-neutral-200 min-h-96">
+      <p class="text-error-600 mb-4">{{ error }}</p>
+      <UiButton variant="outline" @click="fetchOrders">다시 시도</UiButton>
     </div>
 
     <!-- Order List -->
@@ -316,13 +324,13 @@ import { useUiStore } from '~/stores/ui'
       @row-click="(order) => goToDetail(order.id)"
     >
       <!-- 주문번호 -->
-      <template #cell-orderNo="{ item }">
-        <span class="text-sm font-medium text-primary-600">{{ item.orderNo }}</span>
+      <template #cell-orderNumber="{ item }">
+        <span class="text-sm font-medium text-primary-600">{{ item.orderNumber }}</span>
       </template>
 
       <!-- 주문일시 -->
-      <template #cell-orderDate="{ item }">
-        <span class="text-sm text-neutral-600">{{ item.orderDate }}</span>
+      <template #cell-orderedAt="{ item }">
+        <span class="text-sm text-neutral-600">{{ formatDate(item.orderedAt) }}</span>
       </template>
 
       <!-- 유저ID -->
@@ -332,7 +340,7 @@ import { useUiStore } from '~/stores/ui'
 
       <!-- 연락처 -->
       <template #cell-phone="{ item }">
-        <span class="text-sm text-neutral-600">{{ item.phone }}</span>
+        <span class="text-sm text-neutral-600">{{ item.phone || '-' }}</span>
       </template>
 
       <!-- 주소 -->
@@ -344,13 +352,15 @@ import { useUiStore } from '~/stores/ui'
       <template #cell-itemCount="{ item }">
         <span class="text-sm text-neutral-700">{{ item.itemCount }}건</span>
       </template>
+
       <!-- 결제수단 -->
-      <template #cell-payment="{ item }">
-        <span class="text-sm text-neutral-600">{{ item.payment }}</span>
+      <template #cell-paymentMethod="{ item }">
+        <span class="text-sm text-neutral-600">{{ paymentMethodMap[item.paymentMethod] || item.paymentMethod }}</span>
       </template>
+
       <!-- 주문금액 -->
-      <template #cell-totalAmount="{ item }">
-        <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(item.totalAmount) }}</span>
+      <template #cell-grandTotal="{ item }">
+        <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(item.grandTotal) }}</span>
       </template>
 
       <!-- 상태 -->
@@ -364,21 +374,21 @@ import { useUiStore } from '~/stores/ui'
       <template #mobile-card="{ item }">
         <div class="flex items-start justify-between mb-2">
           <div>
-            <span class="text-sm font-medium text-primary-600">{{ item.orderNo }}</span>
-            <p class="text-xs text-neutral-500">{{ item.orderDate }}</p>
+            <span class="text-sm font-medium text-primary-600">{{ item.orderNumber }}</span>
+            <p class="text-xs text-neutral-500">{{ formatDate(item.orderedAt) }}</p>
           </div>
           <UiBadge :variant="statusMap[item.status]?.variant || 'neutral'" size="sm">
             {{ statusMap[item.status]?.label || item.status }}
           </UiBadge>
         </div>
         <div class="text-sm text-neutral-600 space-y-1">
-          <p>{{ item.userId }} ({{ item.userName }})</p>
-          <p>{{ item.phone }}</p>
-          <p class="text-xs text-neutral-500 truncate">{{ item.address }}</p>
+          <p>유저ID: {{ item.userId }}</p>
+          <p>{{ item.phone || '-' }}</p>
+          <p class="text-xs text-neutral-500 truncate">{{ item.address || '-' }}</p>
         </div>
         <div class="flex items-center justify-between mt-2 pt-2 border-t border-neutral-100">
-          <span class="text-sm text-neutral-500">{{ item.itemCount }}건</span>
-          <span class="text-sm font-semibold text-neutral-900">{{ formatCurrency(item.totalAmount) }}</span>
+          <span class="text-sm text-neutral-500">{{ item.itemCount }}건 · {{ paymentMethodMap[item.paymentMethod] || item.paymentMethod }}</span>
+          <span class="text-sm font-semibold text-neutral-900">{{ formatCurrency(item.grandTotal) }}</span>
         </div>
       </template>
 
@@ -440,6 +450,7 @@ import { useUiStore } from '~/stores/ui'
         <div class="flex justify-end gap-2">
           <UiButton
             variant="outline"
+            :disabled="isChangingStatus"
             @click="showStatusModal = false"
           >
             취소
@@ -447,6 +458,7 @@ import { useUiStore } from '~/stores/ui'
           <UiButton
             variant="primary"
             :disabled="!selectedStatus"
+            :loading="isChangingStatus"
             @click="handleStatusChange"
           >
             변경
