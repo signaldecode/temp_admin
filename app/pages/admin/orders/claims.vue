@@ -4,6 +4,8 @@
  * - 교환요청, 반품요청, 취소 상태 주문만 표시
  * - 벌크 선택 + 상태 변경
  */
+import { formatCurrency, formatDate } from '~/utils/formatters'
+import { useUiStore } from '~/stores/ui'
 
 const router = useRouter()
 
@@ -21,34 +23,37 @@ const searchOptions = [
 
 // 유형에 따른 상태 필터 옵션
 const statusFilterOptions = computed(() => {
-  if (filterType.value === 'exchange') {
+  if (filterType.value === 'EXCHANGE') {
     return [
-      { value: 'exchange_requested', label: '교환요청' },
-      { value: 'exchange_approved', label: '교환승인' },
-      { value: 'exchange_completed', label: '교환완료' },
+      { value: 'REQUESTED', label: '요청' },
+      { value: 'APPROVED', label: '승인' },
+      { value: 'IN_PROGRESS', label: '진행중' },
+      { value: 'COMPLETED', label: '완료' },
     ]
   }
-  if (filterType.value === 'return') {
+  if (filterType.value === 'RETURN') {
     return [
-      { value: 'return_requested', label: '반품요청' },
-      { value: 'return_approved', label: '반품승인' },
-      { value: 'return_completed', label: '반품완료' },
+      { value: 'REQUESTED', label: '요청' },
+      { value: 'APPROVED', label: '승인' },
+      { value: 'IN_PROGRESS', label: '진행중' },
+      { value: 'COMPLETED', label: '완료' },
     ]
   }
-  if (filterType.value === 'cancel') {
+  if (filterType.value === 'CANCEL') {
     return [
-      { value: 'cancelled', label: '취소' },
+      { value: 'REQUESTED', label: '요청' },
+      { value: 'APPROVED', label: '승인' },
+      { value: 'COMPLETED', label: '완료' },
+      { value: 'REJECTED', label: '거절' },
     ]
   }
   // 전체일 경우 모든 상태
   return [
-    { value: 'exchange_requested', label: '교환요청' },
-    { value: 'exchange_approved', label: '교환승인' },
-    { value: 'exchange_completed', label: '교환완료' },
-    { value: 'return_requested', label: '반품요청' },
-    { value: 'return_approved', label: '반품승인' },
-    { value: 'return_completed', label: '반품완료' },
-    { value: 'cancelled', label: '취소' },
+    { value: 'REQUESTED', label: '요청' },
+    { value: 'APPROVED', label: '승인' },
+    { value: 'IN_PROGRESS', label: '진행중' },
+    { value: 'COMPLETED', label: '완료' },
+    { value: 'REJECTED', label: '거절' },
   ]
 })
 
@@ -59,6 +64,7 @@ watch(filterType, () => {
 
 // 로딩 상태
 const isLoading = ref(false)
+const error = ref(null)
 
 // 페이지네이션
 const currentPage = ref(1)
@@ -76,117 +82,93 @@ const selectedIds = ref([])
 const showStatusModal = ref(false)
 const selectedStatus = ref('')
 
-// 클레임 상태 옵션 (교환/반품/취소만)
+// 클레임 상태 옵션 (백엔드 상태값)
 const claimStatusOptions = [
-  { value: 'exchange_requested', label: '교환요청' },
-  { value: 'exchange_approved', label: '교환승인' },
-  { value: 'exchange_completed', label: '교환완료' },
-  { value: 'return_requested', label: '반품요청' },
-  { value: 'return_approved', label: '반품승인' },
-  { value: 'return_completed', label: '반품완료' },
-  { value: 'cancelled', label: '취소' },
+  { value: 'REQUESTED', label: '요청' },
+  { value: 'APPROVED', label: '승인' },
+  { value: 'IN_PROGRESS', label: '진행중' },
+  { value: 'COMPLETED', label: '완료' },
+  { value: 'REJECTED', label: '거절' },
 ]
 
-// 클레임 상태 매핑
+// 클레임 상태 매핑 (백엔드 상태값에 맞게)
 const statusMap = {
-  exchange_requested: { label: '교환요청', variant: 'warning' },
-  exchange_approved: { label: '교환승인', variant: 'info' },
-  exchange_completed: { label: '교환완료', variant: 'success' },
-  return_requested: { label: '반품요청', variant: 'warning' },
-  return_approved: { label: '반품승인', variant: 'info' },
-  return_completed: { label: '반품완료', variant: 'success' },
-  cancelled: { label: '취소', variant: 'error' },
+  REQUESTED: { label: '요청', variant: 'warning' },
+  APPROVED: { label: '승인', variant: 'info' },
+  IN_PROGRESS: { label: '진행중', variant: 'info' },
+  COMPLETED: { label: '완료', variant: 'success' },
+  REJECTED: { label: '거절', variant: 'error' },
+}
+
+// 사유 타입 매핑
+const reasonTypeMap = {
+  DEFECTIVE: '불량',
+  WRONG_DELIVERY: '오배송',
+  DELAYED_DELIVERY: '배송지연',
+  CHANGE_OF_MIND: '마음변경',
+  INCOMPATIBILITY: '호환성문제',
+}
+
+// 클레임 타입 매핑
+const claimTypeMap = {
+  EXCHANGE: '교환',
+  RETURN: '반품',
+  CANCEL: '취소',
+}
+
+// 조합된 상태 라벨 반환 함수
+const getCombinedStatusLabel = (claimType, status) => {
+  const typeLabel = claimTypeMap[claimType] || claimType
+  const statusLabel = statusMap[status]?.label || status
+  return `${typeLabel}${statusLabel}`
 }
 
 // 클레임 유형 필터 옵션
 const claimTypeOptions = [
-  { value: 'exchange', label: '교환' },
-  { value: 'return', label: '반품' },
-  { value: 'cancel', label: '취소' },
+  { value: 'EXCHANGE', label: '교환' },
+  { value: 'RETURN', label: '반품' },
+  { value: 'CANCEL', label: '취소' },
 ]
 
-// Mock 데이터 로드
 const fetchOrders = async () => {
   isLoading.value = true
+  error.value = null
 
-  await new Promise((resolve) => setTimeout(resolve, 300))
-
-  // 클레임 상태인 주문만 (교환/반품/취소)
-  const allClaimOrders = [
-    { id: 1, orderNo: 'ORD20250108001', orderDate: '2025-01-08 14:30', userId: 'user001', userName: '김철수', phone: '010-1234-5678', reason: '사이즈 교환', itemCount: 1, totalAmount: 89000, status: 'exchange_requested', claimDate: '2025-01-09 10:30' },
-    { id: 2, orderNo: 'ORD20250107002', orderDate: '2025-01-07 11:20', userId: 'user002', userName: '이영희', phone: '010-2345-6789', reason: '상품 불량', itemCount: 2, totalAmount: 156000, status: 'return_requested', claimDate: '2025-01-08 15:20' },
-    { id: 3, orderNo: 'ORD20250107003', orderDate: '2025-01-07 09:45', userId: 'user003', userName: '박민수', phone: '010-3456-7890', reason: '단순 변심', itemCount: 1, totalAmount: 45000, status: 'cancelled', claimDate: '2025-01-07 12:00' },
-    { id: 4, orderNo: 'ORD20250106001', orderDate: '2025-01-06 16:30', userId: 'user004', userName: '정수진', phone: '010-4567-8901', reason: '색상 교환', itemCount: 1, totalAmount: 78000, status: 'exchange_approved', claimDate: '2025-01-07 09:00' },
-    { id: 5, orderNo: 'ORD20250106002', orderDate: '2025-01-06 14:00', userId: 'user005', userName: '최동욱', phone: '010-5678-9012', reason: '오배송', itemCount: 3, totalAmount: 234000, status: 'return_approved', claimDate: '2025-01-07 11:30' },
-    { id: 6, orderNo: 'ORD20250105001', orderDate: '2025-01-05 10:15', userId: 'user006', userName: '강미영', phone: '010-6789-0123', reason: '단순 변심', itemCount: 1, totalAmount: 67000, status: 'cancelled', claimDate: '2025-01-05 14:00' },
-    { id: 7, orderNo: 'ORD20250104001', orderDate: '2025-01-04 13:45', userId: 'user007', userName: '윤서준', phone: '010-7890-1234', reason: '사이즈 교환', itemCount: 2, totalAmount: 128000, status: 'exchange_completed', claimDate: '2025-01-05 16:00' },
-    { id: 8, orderNo: 'ORD20250104002', orderDate: '2025-01-04 11:30', userId: 'user008', userName: '임지현', phone: '010-8901-2345', reason: '상품 파손', itemCount: 1, totalAmount: 189000, status: 'return_completed', claimDate: '2025-01-06 10:00' },
-    // 더미 데이터
-    ...Array.from({ length: 42 }, (_, i) => ({
-      id: 9 + i,
-      orderNo: `ORD20250${String(Math.floor(Math.random() * 8) + 1).padStart(2, '0')}${String(100 + i).padStart(3, '0')}`,
-      orderDate: `2025-01-0${Math.floor(Math.random() * 8) + 1} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}`,
-      userId: `user${String(Math.floor(Math.random() * 100) + 1).padStart(3, '0')}`,
-      userName: `테스트 회원 ${9 + i}`,
-      phone: `010-${String(1000 + i).slice(-4)}-${String(5000 + i).slice(-4)}`,
-      reason: ['사이즈 교환', '색상 교환', '단순 변심', '상품 불량', '오배송', '상품 파손'][Math.floor(Math.random() * 6)],
-      itemCount: Math.floor(Math.random() * 3) + 1,
-      totalAmount: Math.floor(Math.random() * 300000) + 30000,
-      status: ['exchange_requested', 'exchange_approved', 'return_requested', 'return_approved', 'cancelled'][Math.floor(Math.random() * 5)],
-      claimDate: `2025-01-0${Math.floor(Math.random() * 8) + 1} ${String(Math.floor(Math.random() * 24)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}`,
-    })),
-  ]
-
-  // 유형 필터링
-  let filtered = allClaimOrders
-  if (filterType.value) {
-    if (filterType.value === 'exchange') {
-      filtered = filtered.filter((order) => order.status.startsWith('exchange'))
-    } else if (filterType.value === 'return') {
-      filtered = filtered.filter((order) => order.status.startsWith('return'))
-    } else if (filterType.value === 'cancel') {
-      filtered = filtered.filter((order) => order.status === 'cancelled')
+  try {
+    const { $api } = useNuxtApp()
+    const params = {
+      page: currentPage.value,
+      size: perPage,
     }
+
+    if (filterType.value) {
+      params.claimType = filterType.value
+    }
+
+    if (filterStatus.value) {
+      params.status = filterStatus.value
+    }
+
+    if (searchKeyword.value) {
+      params.searchType = searchType.value
+      params.keyword = searchKeyword.value
+    }
+
+    const response = await $api.get('/admin/claims', params)
+    // 응답 구조: response.data.data || response.data
+    const data = response.data.data || response.data
+
+    orders.value = data.content || []
+    totalItems.value = data.total_elements || 0
+
+    // 페이지 변경 시 선택 초기화
+    selectedIds.value = []
+  } catch (err) {
+    console.error('Claims fetch error:', err)
+    error.value = err.data?.message || err.data?.error?.message || err.message || '데이터를 불러오는데 실패했습니다.'
+  } finally {
+    isLoading.value = false
   }
-
-  // 상태 필터링
-  if (filterStatus.value) {
-    filtered = filtered.filter((order) => order.status === filterStatus.value)
-  }
-
-  // 검색 필터링
-  if (searchKeyword.value) {
-    const keyword = searchKeyword.value.toLowerCase()
-    filtered = filtered.filter((order) => {
-      switch (searchType.value) {
-        case 'orderNo':
-          return order.orderNo.toLowerCase().includes(keyword)
-        case 'userId':
-          return order.userId.toLowerCase().includes(keyword)
-        case 'phone':
-          return order.phone.replace(/-/g, '').includes(keyword.replace(/-/g, ''))
-        default:
-          return true
-      }
-    })
-  }
-
-  totalItems.value = filtered.length
-
-  // 페이지네이션
-  const start = (currentPage.value - 1) * perPage
-  const end = start + perPage
-  orders.value = filtered.slice(start, end)
-
-  // 페이지 변경 시 선택 초기화
-  selectedIds.value = []
-
-  isLoading.value = false
-}
-
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
 }
 
 // 검색 실행
@@ -213,13 +195,13 @@ const handlePageChange = (page) => {
 
 // 테이블 컬럼 정의
 const tableColumns = [
-  { key: 'orderNo', label: '주문번호' },
-  { key: 'claimDate', label: '접수일시' },
+  { key: 'orderNumber', label: '주문번호' },
+  { key: 'requestedAt', label: '접수일시' },
   { key: 'userId', label: '유저ID' },
   { key: 'phone', label: '연락처' },
-  { key: 'reason', label: '사유' },
+  { key: 'reasonType', label: '사유' },
   { key: 'itemCount', label: '건수', align: 'center' },
-  { key: 'totalAmount', label: '주문금액', align: 'right' },
+  { key: 'orderAmount', label: '주문금액', align: 'right' },
   { key: 'status', label: '상태', align: 'center' },
 ]
 
@@ -281,9 +263,6 @@ const goToDetail = (orderId) => {
 onMounted(() => {
   fetchOrders()
 })
-
-// import
-import { useUiStore } from '~/stores/ui'
 </script>
 
 <template>
@@ -356,6 +335,12 @@ import { useUiStore } from '~/stores/ui'
       <UiSpinner size="lg" />
     </div>
 
+    <!-- Error -->
+    <div v-else-if="error" class="flex-1 flex flex-col items-center justify-center bg-white rounded-lg border border-neutral-200 min-h-96">
+      <p class="text-error-600 mb-4">{{ error }}</p>
+      <UiButton variant="outline" @click="fetchOrders">다시 시도</UiButton>
+    </div>
+
     <!-- Order List -->
     <DomainDataTable
       v-else
@@ -367,16 +352,16 @@ import { useUiStore } from '~/stores/ui'
       empty-description="다른 검색어로 다시 시도해보세요."
       @select="handleSelect"
       @select-all="handleSelectAll"
-      @row-click="(order) => goToDetail(order.id)"
+      @row-click="(order) => goToDetail(order.orderId)"
     >
       <!-- 주문번호 -->
-      <template #cell-orderNo="{ item }">
-        <span class="text-sm font-medium text-primary-600">{{ item.orderNo }}</span>
+      <template #cell-orderNumber="{ item }">
+        <span class="text-sm font-medium text-primary-600">{{ item.orderNumber }}</span>
       </template>
 
       <!-- 접수일시 -->
-      <template #cell-claimDate="{ item }">
-        <span class="text-sm text-neutral-600">{{ item.claimDate }}</span>
+      <template #cell-requestedAt="{ item }">
+        <span class="text-sm text-neutral-600">{{ formatDate(item.requestedAt, 'long') }}</span>
       </template>
 
       <!-- 유저ID -->
@@ -390,8 +375,8 @@ import { useUiStore } from '~/stores/ui'
       </template>
 
       <!-- 사유 -->
-      <template #cell-reason="{ item }">
-        <span class="text-sm text-neutral-700">{{ item.reason }}</span>
+      <template #cell-reasonType="{ item }">
+        <span class="text-sm text-neutral-700">{{ reasonTypeMap[item.reasonType] || item.reasonType }}</span>
       </template>
 
       <!-- 건수 -->
@@ -400,14 +385,14 @@ import { useUiStore } from '~/stores/ui'
       </template>
 
       <!-- 주문금액 -->
-      <template #cell-totalAmount="{ item }">
-        <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(item.totalAmount) }}</span>
+      <template #cell-orderAmount="{ item }">
+        <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(item.orderAmount) }}</span>
       </template>
 
       <!-- 상태 -->
       <template #cell-status="{ item }">
         <UiBadge :variant="statusMap[item.status]?.variant || 'neutral'" size="sm">
-          {{ statusMap[item.status]?.label || item.status }}
+          {{ getCombinedStatusLabel(item.claimType, item.status) }}
         </UiBadge>
       </template>
 
@@ -415,21 +400,21 @@ import { useUiStore } from '~/stores/ui'
       <template #mobile-card="{ item }">
         <div class="flex items-start justify-between mb-2">
           <div>
-            <span class="text-sm font-medium text-primary-600">{{ item.orderNo }}</span>
-            <p class="text-xs text-neutral-500">{{ item.claimDate }}</p>
+            <span class="text-sm font-medium text-primary-600">{{ item.orderNumber }}</span>
+            <p class="text-xs text-neutral-500">{{ formatDate(item.requestedAt, 'long') }}</p>
           </div>
           <UiBadge :variant="statusMap[item.status]?.variant || 'neutral'" size="sm">
-            {{ statusMap[item.status]?.label || item.status }}
+            {{ getCombinedStatusLabel(item.claimType, item.status) }}
           </UiBadge>
         </div>
         <div class="text-sm text-neutral-600 space-y-1">
-          <p>{{ item.userId }} ({{ item.userName }})</p>
+          <p>{{ item.userId }}</p>
           <p>{{ item.phone }}</p>
-          <p class="text-neutral-500">사유: {{ item.reason }}</p>
+          <p class="text-neutral-500">사유: {{ reasonTypeMap[item.reasonType] || item.reasonType }}</p>
         </div>
         <div class="flex items-center justify-between mt-2 pt-2 border-t border-neutral-100">
           <span class="text-sm text-neutral-500">{{ item.itemCount }}건</span>
-          <span class="text-sm font-semibold text-neutral-900">{{ formatCurrency(item.totalAmount) }}</span>
+          <span class="text-sm font-semibold text-neutral-900">{{ formatCurrency(item.orderAmount) }}</span>
         </div>
       </template>
 

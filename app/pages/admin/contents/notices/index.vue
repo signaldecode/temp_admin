@@ -4,6 +4,7 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { formatDate } from '~/utils/formatters'
 
 const router = useRouter()
 const uiStore = useUiStore()
@@ -66,7 +67,6 @@ const bulkDelete = () => {
 
 const getCategoryLabel = (category) => categoryOptions.find((c) => c.value === category)?.label || category
 const getStatusBadge = (status) => statusOptions.find((s) => s.value === status) || statusOptions[1]
-const formatDate = (date) => new Date(date).toLocaleDateString('ko-KR')
 
 const goToCreate = () => router.push('/admin/contents/notices/new')
 const goToDetail = (notice) => router.push(`/admin/contents/notices/${notice.id}`)

@@ -4,6 +4,7 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { formatDate } from '~/utils/formatters'
 
 const router = useRouter()
 const uiStore = useUiStore()
@@ -154,7 +155,6 @@ const bulkChangeStatus = (status) => {
 // 헬퍼 함수
 const getStatusBadge = (status) => statusOptions.find((s) => s.value === status) || statusOptions[3]
 const getPositionLabel = (position) => positionOptions.find((p) => p.value === position)?.label || position
-const formatDate = (date) => date ? new Date(date).toLocaleDateString('ko-KR') : '-'
 
 // 페이지 이동
 const goToCreate = () => router.push('/admin/contents/banners/new')

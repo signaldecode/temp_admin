@@ -8,6 +8,7 @@
  * - 주문 이력
  */
 import { useUiStore } from '~/stores/ui'
+import { formatCurrency, formatDate } from '~/utils/formatters'
 
 const route = useRoute()
 const router = useRouter()
@@ -69,26 +70,6 @@ const statusOptions = [
   { value: 'CANCELLED', label: '취소' },
   { value: 'REFUNDED', label: '환불' },
 ]
-
-// 날짜 포맷
-const formatDate = (dateString) => {
-  if (!dateString) return '-'
-  const date = new Date(dateString)
-  return date.toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
-
-// 금액 포맷
-const formatCurrency = (value) => {
-  if (value === null || value === undefined) return '-'
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
-}
 
 // 데이터 로드
 const fetchOrder = async () => {

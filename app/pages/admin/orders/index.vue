@@ -6,6 +6,7 @@
  * - 페이지네이션 (30개)
  */
 import { useUiStore } from '~/stores/ui'
+import { formatCurrency, formatDate, truncateAddress } from '~/utils/formatters'
 
 const router = useRouter()
 const route = useRoute()
@@ -77,19 +78,6 @@ const paymentMethodMap = {
   POINT: '포인트',
 }
 
-// 날짜 포맷
-const formatDate = (dateString) => {
-  if (!dateString) return '-'
-  const date = new Date(dateString)
-  return date.toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 // API 데이터 로드
 const fetchOrders = async () => {
   isLoading.value = true
@@ -126,18 +114,7 @@ const fetchOrders = async () => {
   }
 }
 
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
-}
-
-// 주소 축약 (모바일용)
-const truncateAddress = (address, maxLength = 20) => {
-  if (!address) return '-'
-  return address.length > maxLength ? address.slice(0, maxLength) + '...' : address
-}
-
-// 검색 실행
+// API 데이터 로드
 const handleSearch = () => {
   currentPage.value = 1
   fetchOrders()

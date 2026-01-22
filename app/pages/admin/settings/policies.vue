@@ -8,6 +8,7 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { formatCurrency } from '~/utils/formatters'
 
 const uiStore = useUiStore()
 
@@ -113,11 +114,6 @@ onMounted(async () => {
 
   isLoading.value = false
 })
-
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value)
-}
 
 // 저장
 const handleSave = async () => {

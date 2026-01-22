@@ -8,6 +8,7 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { formatCurrency } from '~/utils/formatters'
 
 const route = useRoute()
 const router = useRouter()
@@ -126,10 +127,6 @@ const genderMap = {
   other: '기타',
 }
 
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
-}
 
 // 기본 정보 아이템
 const basicInfoItems = computed(() => {

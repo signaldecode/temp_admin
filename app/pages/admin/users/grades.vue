@@ -6,6 +6,7 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { formatCurrency } from '~/utils/formatters'
 
 const uiStore = useUiStore()
 
@@ -65,11 +66,6 @@ const colorVariant = {
   error: 'error',
   warning: 'warning',
   neutral: 'neutral',
-}
-
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
 }
 
 // 등급 편집 모달

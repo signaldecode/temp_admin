@@ -4,6 +4,7 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { formatDate } from '~/utils/formatters'
 
 const router = useRouter()
 const uiStore = useUiStore()
@@ -82,7 +83,6 @@ const bulkChangeStatus = (status) => {
 // 헬퍼
 const getStatusBadge = (status) => statusOptions.find((s) => s.value === status) || statusOptions[3]
 const getTypeLabel = (type) => typeOptions.find((t) => t.value === type)?.label || type
-const formatDate = (date) => date ? new Date(date).toLocaleDateString('ko-KR') : '-'
 
 // 페이지 이동
 const goToCreate = () => router.push('/admin/contents/popups/new')

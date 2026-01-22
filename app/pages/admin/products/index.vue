@@ -9,6 +9,7 @@
 
 import { useUiStore } from '~/stores/ui'
 import { useApi } from '~/composables/useApi'
+import { formatCurrency } from '~/utils/formatters'
 
 const router = useRouter()
 const uiStore = useUiStore()
@@ -110,11 +111,6 @@ const fetchProducts = async () => {
   } finally {
     isLoading.value = false
   }
-}
-
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
 }
 
 // 할인 여부 확인

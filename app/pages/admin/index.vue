@@ -4,6 +4,7 @@
  * 관리자 대시보드 메인 페이지
  */
 import { useAuthStore } from '~/stores/auth'
+import { formatCurrency, formatDate } from '~/utils/formatters'
 
 const authStore = useAuthStore()
 const { $api } = useNuxtApp()
@@ -55,26 +56,6 @@ const colorClasses = {
   warning: { bg: 'bg-warning-50', text: 'text-warning-700', border: 'border-warning-200' },
   error: { bg: 'bg-error-50', text: 'text-error-700', border: 'border-error-200' },
   info: { bg: 'bg-info-50', text: 'text-info-700', border: 'border-info-200' },
-}
-
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR', {
-    style: 'currency',
-    currency: 'KRW',
-  }).format(value)
-}
-
-// 날짜 포맷
-const formatDate = (dateString) => {
-  if (!dateString) return ''
-  const date = new Date(dateString)
-  return date.toLocaleString('ko-KR', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 // 대시보드 데이터 불러오기
@@ -145,7 +126,7 @@ const handleOrderSearch = () => {
   if (!keyword) return
 
   router.push({
-    path: '/admin/orders',
+    path: '/api/v1/admin/orders',
     query: { keyword, searchType: 'ORDER_NUMBER' },
   })
 }

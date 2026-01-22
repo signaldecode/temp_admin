@@ -67,7 +67,7 @@ export const useAuthStore = defineStore('auth', {
 
         return { success: true }
       } catch (error) {
-        this.error = error.data?.message || error.message || '로그인에 실패했습니다.'
+        this.error = error.data?.error?.message || error.data?.message || error.message || '로그인에 실패했습니다.'
         this.isAuthenticated = false
         return { success: false, error: this.error }
       } finally {
@@ -126,7 +126,7 @@ export const useAuthStore = defineStore('auth', {
         return { success: true }
       } catch (error) {
         this.isAuthenticated = false
-        this.error = error.message
+        this.error = error.data?.error?.message || error.data?.message || error.message
 
         // 401인 경우 로그인 페이지로
         if (error.status === 401 || error.statusCode === 401) {
@@ -151,6 +151,10 @@ export const useAuthStore = defineStore('auth', {
       // 테넌트 스토어도 초기화
       const tenantStore = useTenantStore()
       tenantStore.reset()
+
+      // 카탈로그 스토어도 초기화
+      const catalogStore = useCatalogStore()
+      catalogStore.reset()
     },
   },
 })
@@ -160,4 +164,10 @@ function useTenantStore() {
   return useNuxtApp().$pinia.state.value.tenant
     ? useNuxtApp().$pinia._s.get('tenant')
     : { setCurrentTenant: () => {}, setTenants: () => {}, reset: () => {} }
+}
+
+function useCatalogStore() {
+  return useNuxtApp().$pinia.state.value.catalog
+    ? useNuxtApp().$pinia._s.get('catalog')
+    : { reset: () => {} }
 }

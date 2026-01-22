@@ -8,6 +8,7 @@
 
 import { useUiStore } from '~/stores/ui'
 import { useApi } from '~/composables/useApi'
+import { formatCurrency } from '~/utils/formatters'
 
 const router = useRouter()
 const route = useRoute()
@@ -130,11 +131,6 @@ const statusMap = {
   INACTIVE: { label: '비활성', variant: 'warning' },
   SUSPENDED: { label: '정지', variant: 'error' },
   WITHDRAWN: { label: '탈퇴', variant: 'neutral' },
-}
-
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
 }
 
 // 검색 실행

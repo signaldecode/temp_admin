@@ -14,8 +14,8 @@ const router = useRouter()
 
 // 폼 데이터
 const form = reactive({
-  email: 'test',
-  password: '1234',
+  email: 'staff@test-shop.com',
+  password: 'test1234',
 })
 
 // 폼 에러
@@ -102,7 +102,7 @@ const handleSubmit = async () => {
             v-model="form.email"
             type="text"
             label="아이디"
-            placeholder="test"
+            placeholder="staff@test-shop.com"
             :error="errors.email"
             required
             autocomplete="username"
@@ -125,7 +125,7 @@ const handleSubmit = async () => {
         <!-- Test Account Info -->
         <div class="mb-4 p-3 bg-info-50 border border-info-200 rounded-lg text-sm text-info-700">
           <p class="font-medium">테스트 계정</p>
-          <p>아이디: test / 비밀번호: 1234</p>
+          <p>아이디: staff@test-shop.com / 비밀번호: test1234</p>
         </div>
 
         <!-- Submit Button -->

@@ -6,10 +6,14 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { useCatalogStore } from '~/stores/catalog'
+import { formatCurrency } from '~/utils/formatters'
 
 const route = useRoute()
 const router = useRouter()
+const { $api } = useNuxtApp()
 const uiStore = useUiStore()
+const catalogStore = useCatalogStore()
 
 // 모드 판별
 const isEditMode = computed(() => route.params.id !== 'new')
@@ -32,52 +36,36 @@ const product = ref({
   categoryId: '', // 카테고리 ID
   price: 0,
   hasDiscount: false,
-  discountType: 'percent',
+  discountType: 'RATE', // 'RATE' = 퍼센트, 'AMOUNT' = 금액
   discountValue: 0,
   maxPurchase: 10,
-  isNew: false,
-  isPopular: false,
-  isRecommend: false,
   status: 'active',
 })
 
-// 카테고리 목록 (Mock)
-const categories = ref([
-  { id: 'cat-1', name: '의류', children: [
-    { id: 'cat-1-1', name: '상의' },
-    { id: 'cat-1-2', name: '하의' },
-    { id: 'cat-1-3', name: '아우터' },
-  ]},
-  { id: 'cat-2', name: '신발', children: [
-    { id: 'cat-2-1', name: '운동화' },
-    { id: 'cat-2-2', name: '구두' },
-    { id: 'cat-2-3', name: '샌들' },
-  ]},
-  { id: 'cat-3', name: '가방', children: [
-    { id: 'cat-3-1', name: '백팩' },
-    { id: 'cat-3-2', name: '숄더백' },
-    { id: 'cat-3-3', name: '크로스백' },
-  ]},
-  { id: 'cat-4', name: '액세서리', children: [
-    { id: 'cat-4-1', name: '모자' },
-    { id: 'cat-4-2', name: '벨트' },
-    { id: 'cat-4-3', name: '시계' },
-  ]},
-])
+// 선택된 태그 ID 목록
+const selectedTagIds = ref([])
+
+// 카테고리 목록 (Pinia 스토어에서 가져옴)
+const categories = computed(() => catalogStore.categories)
 
 // 카테고리 옵션 (플랫하게 변환)
-const categoryOptions = computed(() => {
-  const options = []
-  categories.value.forEach((parent) => {
-    options.push({ id: parent.id, name: parent.name, isParent: true })
-    if (parent.children) {
-      parent.children.forEach((child) => {
-        options.push({ id: child.id, name: `  ${child.name}`, parentId: parent.id })
-      })
-    }
-  })
-  return options
-})
+const categoryOptions = computed(() => catalogStore.getCategoryOptions())
+
+// 태그 목록 (Pinia 스토어에서 가져옴)
+const tags = computed(() => catalogStore.tags)
+
+// 태그 선택/해제 토글
+const toggleTag = (tagId) => {
+  const index = selectedTagIds.value.indexOf(tagId)
+  if (index > -1) {
+    selectedTagIds.value.splice(index, 1)
+  } else {
+    selectedTagIds.value.push(tagId)
+  }
+}
+
+// 태그 선택 여부 확인
+const isTagSelected = (tagId) => selectedTagIds.value.includes(tagId)
 
 // 대표 이미지
 const mainImage = ref(null)
@@ -115,7 +103,8 @@ const discountPrice = computed(() => {
   if (!product.value.hasDiscount || product.value.discountValue <= 0) {
     return product.value.price
   }
-  if (product.value.discountType === 'percent') {
+  // 'RATE' = 퍼센트 할인, 'AMOUNT' = 금액 할인
+  if (product.value.discountType === 'RATE') {
     return Math.floor(product.value.price * (1 - product.value.discountValue / 100))
   }
   return Math.max(0, product.value.price - product.value.discountValue)
@@ -126,11 +115,6 @@ const discountRate = computed(() => {
   if (!product.value.hasDiscount || product.value.price <= 0) return 0
   return Math.round((1 - discountPrice.value / product.value.price) * 100)
 })
-
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
-}
 
 // 대표 이미지 업로드
 const handleMainImageUpload = (event) => {
@@ -386,49 +370,122 @@ const validateForm = () => {
   return true
 }
 
+// API 요청 데이터 빌드
+const buildRequestData = () => {
+  // 옵션 그룹 필터링 (유효한 것만)
+  const validOptionGroups = optionGroups.value
+    .filter((g) => g.name.trim() && parseOptionValues(g.valuesInput).length > 0)
+
+  // 옵션 배열 생성
+  const options = validOptionGroups.map((g) => ({
+    id: g.id && typeof g.id === 'number' && g.id < 1000000000 ? g.id : undefined,
+    name: g.name.trim(),
+    optionValues: parseOptionValues(g.valuesInput), // 문자열 배열: ["블랙", "화이트"]
+  }))
+
+  // variant의 optionValueIds 계산 함수
+  const getOptionValueIds = (variant) => {
+    // variant.options: [{ name: "색상", value: "빨강" }, { name: "사이즈", value: "M" }]
+    // options 배열 순서대로 각 옵션값의 인덱스를 반환
+    return variant.options.map((opt) => {
+      // 해당 옵션 그룹 찾기
+      const groupIndex = validOptionGroups.findIndex(
+        (g) => g.name.trim() === opt.name
+      )
+      if (groupIndex === -1) return 0
+
+      // 해당 그룹에서 옵션값의 인덱스 찾기
+      const values = parseOptionValues(validOptionGroups[groupIndex].valuesInput)
+      const valueIndex = values.indexOf(opt.value)
+      return valueIndex >= 0 ? valueIndex : 0
+    })
+  }
+
+  const data = {
+    name: product.value.name,
+    summary: product.value.description,
+    description: product.value.detailContent,
+    status: product.value.status === 'active' ? 'ON_SALE' : 'STOP_SELLING',
+    costPrice: product.value.costPrice,
+    regularPrice: product.value.price,
+    salePrice: discountPrice.value,
+    maxPurchaseQuantity: product.value.maxPurchase,
+    discountType: product.value.hasDiscount ? product.value.discountType : null,
+    discountValue: product.value.hasDiscount ? product.value.discountValue : 0,
+    categoryId: product.value.categoryId || null,
+    tagIds: selectedTagIds.value,
+    options,
+    variants: variants.value.map((v) => ({
+      id: v.id && typeof v.id === 'number' && v.id < 1000000000 ? v.id : undefined,
+      sku: v.sku,
+      optionValueIds: getOptionValueIds(v),
+      additionalPrice: v.additionalPrice,
+      stockQuantity: v.stock,
+    })),
+  }
+
+  return data
+}
+
 // 저장
 const handleSave = async () => {
   if (!validateForm()) return
 
   isSaving.value = true
 
-  const saveData = {
-    ...product.value,
-    discountPrice: discountPrice.value,
-    mainImage: mainImage.value?.name || null,
-    optionGroups: optionGroups.value
-      .map((g) => ({ name: g.name.trim(), values: parseOptionValues(g.valuesInput) }))
-      .filter((g) => g.name && g.values.length > 0),
-    variants: variants.value.map((v) => ({
-      options: v.options,
-      sku: v.sku,
-      stock: v.stock,
-      additionalPrice: v.additionalPrice,
-      images: v.images.map((img) => img.name),
-    })),
-    totalStock: totalStock.value,
+  try {
+    const requestData = buildRequestData()
+
+    if (isEditMode.value) {
+      // 수정: PATCH (multipart/form-data)
+      const formData = new FormData()
+      formData.append('data', JSON.stringify(requestData))
+
+      // 이미지 파일이 있으면 추가
+      if (mainImage.value?.file) {
+        formData.append('primaryImage', mainImage.value.file)
+      }
+
+      await $api.patchFormData(`/admin/products/${productId.value}`, formData)
+      uiStore.showToast({ type: 'success', message: '상품이 수정되었습니다.' })
+    } else {
+      // 등록: POST (multipart/form-data)
+      const formData = new FormData()
+      formData.append('data', JSON.stringify(requestData))
+
+      if (mainImage.value?.file) {
+        formData.append('primaryImage', mainImage.value.file)
+      }
+
+      await $api.postFormData('/admin/products', formData)
+      uiStore.showToast({ type: 'success', message: '상품이 등록되었습니다.' })
+    }
+
+    router.push('/admin/products')
+  } catch (err) {
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || err.message || '저장에 실패했습니다.',
+    })
+  } finally {
+    isSaving.value = false
   }
-
-  console.log('상품 저장 데이터:', saveData)
-
-  await new Promise((resolve) => setTimeout(resolve, 1000))
-
-  isSaving.value = false
-
-  uiStore.showToast({
-    type: 'success',
-    message: isEditMode.value ? '상품이 수정되었습니다.' : '상품이 등록되었습니다.',
-  })
-
-  router.push('/admin/products')
 }
 
 // 삭제 (수정 모드에서만)
 const handleDelete = async () => {
   if (!confirm('이 상품을 삭제하시겠습니까?')) return
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  uiStore.showToast({ type: 'success', message: '상품이 삭제되었습니다.' })
-  router.push('/admin/products')
+
+  try {
+    await $api.delete(`/admin/products/${productId.value}`)
+    uiStore.showToast({ type: 'success', message: '상품이 삭제되었습니다.' })
+    router.push('/admin/products')
+  } catch (err) {
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || err.message || '삭제에 실패했습니다.',
+    })
+  }
 }
 
 // 취소
@@ -446,78 +503,101 @@ const statusOptions = [
 const fetchProduct = async () => {
   isLoading.value = true
 
-  // Mock API 호출
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  try {
+    const response = await $api.get(`/admin/products/${productId.value}`)
+    const data = response.data || response
 
-  // Mock 데이터
-  const mockProduct = {
-    id: productId.value,
-    name: '베이직 코튼 티셔츠',
-    description: '부드러운 코튼 소재의 기본 티셔츠입니다. 다양한 스타일링에 활용하기 좋습니다.',
-    detailContent: '<h2>상품 상세 정보</h2><p>고품질 면 100% 소재로 제작되었습니다.</p><p>사계절 내내 편안하게 착용 가능합니다.</p>',
-    categoryId: 'cat-1-1',
-    price: 29000,
-    hasDiscount: true,
-    discountType: 'percent',
-    discountValue: 10,
-    maxPurchase: 5,
-    isNew: true,
-    isPopular: false,
-    isRecommend: true,
-    status: 'active',
-    mainImage: {
-      preview: '/images/products/1.jpg',
-      name: 'product-main.jpg',
-    },
-    optionGroups: [
-      { name: '컬러', values: ['블랙', '화이트', '그레이'] },
-      { name: '사이즈', values: ['S', 'M', 'L'] },
-    ],
-    variants: [
-      { id: 1, options: [{ name: '컬러', value: '블랙' }, { name: '사이즈', value: 'S' }], optionLabel: '블랙 / S', sku: 'TS-BK-S-001', stock: 50, additionalPrice: 0, images: [] },
-      { id: 2, options: [{ name: '컬러', value: '블랙' }, { name: '사이즈', value: 'M' }], optionLabel: '블랙 / M', sku: 'TS-BK-M-002', stock: 30, additionalPrice: 0, images: [] },
-      { id: 3, options: [{ name: '컬러', value: '블랙' }, { name: '사이즈', value: 'L' }], optionLabel: '블랙 / L', sku: 'TS-BK-L-003', stock: 20, additionalPrice: 1000, images: [] },
-      { id: 4, options: [{ name: '컬러', value: '화이트' }, { name: '사이즈', value: 'S' }], optionLabel: '화이트 / S', sku: 'TS-WH-S-004', stock: 40, additionalPrice: 0, images: [] },
-      { id: 5, options: [{ name: '컬러', value: '화이트' }, { name: '사이즈', value: 'M' }], optionLabel: '화이트 / M', sku: 'TS-WH-M-005', stock: 25, additionalPrice: 0, images: [] },
-      { id: 6, options: [{ name: '컬러', value: '화이트' }, { name: '사이즈', value: 'L' }], optionLabel: '화이트 / L', sku: 'TS-WH-L-006', stock: 15, additionalPrice: 1000, images: [] },
-      { id: 7, options: [{ name: '컬러', value: '그레이' }, { name: '사이즈', value: 'S' }], optionLabel: '그레이 / S', sku: 'TS-GR-S-007', stock: 35, additionalPrice: 0, images: [] },
-      { id: 8, options: [{ name: '컬러', value: '그레이' }, { name: '사이즈', value: 'M' }], optionLabel: '그레이 / M', sku: 'TS-GR-M-008', stock: 20, additionalPrice: 0, images: [] },
-      { id: 9, options: [{ name: '컬러', value: '그레이' }, { name: '사이즈', value: 'L' }], optionLabel: '그레이 / L', sku: 'TS-GR-L-009', stock: 10, additionalPrice: 1000, images: [] },
-    ],
+    // 백엔드 응답 데이터를 현재 product 구조에 매핑
+    product.value = {
+      name: data.name || '',
+      costPrice: data.costPrice || 0,
+      description: data.summary || '',
+      detailContent: data.description || '', // HTML 콘텐츠
+      categoryId: data.category?.id || '',
+      price: data.regularPrice || 0, // 정가
+      hasDiscount: (data.discountValue || 0) > 0,
+      discountType: data.discountType || 'percent',
+      discountValue: data.discountValue || 0,
+      maxPurchase: data.maxPurchaseQuantity || 10,
+      status: data.status === 'ON_SALE' ? 'active' : 'inactive',
+    }
+
+    // 태그 ID 목록 설정 (API 응답의 tags 배열에서 id 추출)
+    if (data.tags && data.tags.length > 0) {
+      selectedTagIds.value = data.tags.map((tag) => tag.id)
+    }
+
+    // 대표 이미지 설정
+    if (data.primaryImage) {
+      mainImage.value = {
+        preview: data.primaryImage.url,
+        name: data.primaryImage.altText || '상품 대표 이미지',
+      }
+    }
+
+    // 옵션 그룹 설정 (options 배열에서 추출)
+    // API 응답: options[].optionValues = [{ id, value }, ...]
+    if (data.options && data.options.length > 0) {
+      optionGroups.value = data.options.map((option, index) => {
+        // optionValues가 객체 배열이면 value만 추출
+        const values = option.optionValues
+          ? option.optionValues.map((ov) => ov.value || ov)
+          : []
+        return {
+          id: option.id || Date.now() + index,
+          name: option.name || '',
+          valuesInput: values.join(', '),
+          nameError: false,
+          // 원본 optionValues 저장 (variant 매핑용)
+          _optionValues: option.optionValues || [],
+        }
+      })
+    }
+
+    // Variants 설정
+    // API 응답: variants[].optionValueIds = [19, 20, ...] (실제 옵션값 ID)
+    if (data.variants && data.variants.length > 0) {
+      // optionValueId → { optionName, optionIndex, value } 매핑 생성
+      const optionValueMap = {}
+      data.options?.forEach((opt, optIndex) => {
+        opt.optionValues?.forEach((ov) => {
+          optionValueMap[ov.id] = {
+            name: opt.name,
+            value: ov.value,
+            optionIndex: optIndex, // 옵션 그룹 순서 저장
+          }
+        })
+      })
+
+      variants.value = data.variants.map((variant) => {
+        // optionValueIds를 options 배열로 변환 (옵션 그룹 순서대로 정렬)
+        const mappedOptions = (variant.optionValueIds || [])
+          .map((ovId) => optionValueMap[ovId])
+          .filter(Boolean)
+          .sort((a, b) => a.optionIndex - b.optionIndex) // 옵션 그룹 순서대로 정렬
+
+        const options = mappedOptions.map((o) => ({ name: o.name, value: o.value }))
+        const optionLabel = options.map((o) => o.value).join(' / ')
+
+        return {
+          id: variant.id || Date.now(),
+          options,
+          optionLabel,
+          sku: variant.sku || '',
+          stock: variant.stockQuantity || 0,
+          additionalPrice: variant.additionalPrice || 0,
+          images: variant.images || [],
+        }
+      })
+      isVariantsGenerated.value = true
+    }
+
+    isLoading.value = false
+  } catch (error) {
+    console.error('상품 로드 실패:', error)
+    uiStore.showToast({ type: 'error', message: '상품을 불러오지 못했습니다.' })
+    isLoading.value = false
   }
-
-  // 데이터 바인딩
-  product.value = {
-    name: mockProduct.name,
-    description: mockProduct.description,
-    detailContent: mockProduct.detailContent,
-    categoryId: mockProduct.categoryId,
-    price: mockProduct.price,
-    hasDiscount: mockProduct.hasDiscount,
-    discountType: mockProduct.discountType,
-    discountValue: mockProduct.discountValue,
-    maxPurchase: mockProduct.maxPurchase,
-    isNew: mockProduct.isNew,
-    isPopular: mockProduct.isPopular,
-    isRecommend: mockProduct.isRecommend,
-    status: mockProduct.status,
-  }
-
-  mainImage.value = mockProduct.mainImage
-
-  // 옵션 그룹 변환
-  optionGroups.value = mockProduct.optionGroups.map((g, index) => ({
-    id: Date.now() + index,
-    name: g.name,
-    valuesInput: g.values.join(', '),
-    nameError: false,
-  }))
-
-  // variants 설정
-  variants.value = mockProduct.variants
-  isVariantsGenerated.value = true
-
-  isLoading.value = false
 }
 
 // 초기 로드
@@ -532,7 +612,7 @@ onMounted(() => {
   <LayoutFormPage
     :title="isEditMode ? (product.name ? `${product.name} 수정` : '상품 수정') : '상품 등록'"
     :description="isEditMode ? '상품 정보를 수정합니다.' : '새 상품을 등록합니다.'"
-    save-text="저장"
+    :save-text="isEditMode ? '수정' : '등록'"
     :is-saving="isSaving"
     :save-disabled="isLoading"
     show-cancel
@@ -714,25 +794,25 @@ onMounted(() => {
                     v-model="product.discountType"
                     class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   >
-                    <option value="percent">퍼센트 (%)</option>
-                    <option value="amount">금액 (원)</option>
+                    <option value="RATE">퍼센트 (%)</option>
+                    <option value="AMOUNT">금액 (원)</option>
                   </select>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-neutral-700 mb-1">
-                    {{ product.discountType === 'percent' ? '할인율' : '할인금액' }}
+                    {{ product.discountType === 'RATE' ? '할인율' : '할인금액' }}
                   </label>
                   <div class="relative">
                     <input
                       v-model.number="product.discountValue"
                       type="number"
                       min="0"
-                      :max="product.discountType === 'percent' ? 100 : product.price"
+                      :max="product.discountType === 'RATE' ? 100 : product.price"
                       class="w-full px-3 py-2 pr-10 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       placeholder="0"
                     >
                     <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500">
-                      {{ product.discountType === 'percent' ? '%' : '원' }}
+                      {{ product.discountType === 'RATE' ? '%' : '원' }}
                     </span>
                   </div>
                 </div>
@@ -1139,30 +1219,22 @@ onMounted(() => {
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-2">상품 태그</label>
             <div class="flex flex-wrap gap-4">
-              <label class="flex items-center gap-2 cursor-pointer">
+              <label
+                v-for="tag in tags"
+                :key="tag.id"
+                class="flex items-center gap-2 cursor-pointer"
+              >
                 <input
-                  v-model="product.isNew"
                   type="checkbox"
+                  :checked="isTagSelected(tag.id)"
                   class="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
+                  @change="toggleTag(tag.id)"
                 >
-                <span class="text-sm text-neutral-700">신상품</span>
+                <span class="text-sm text-neutral-700">{{ tag.name }}</span>
               </label>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input
-                  v-model="product.isPopular"
-                  type="checkbox"
-                  class="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
-                >
-                <span class="text-sm text-neutral-700">인기상품</span>
-              </label>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input
-                  v-model="product.isRecommend"
-                  type="checkbox"
-                  class="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
-                >
-                <span class="text-sm text-neutral-700">추천상품</span>
-              </label>
+              <p v-if="tags.length === 0" class="text-sm text-neutral-500">
+                등록된 태그가 없습니다.
+              </p>
             </div>
           </div>
         </div>
