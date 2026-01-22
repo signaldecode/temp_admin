@@ -27,6 +27,13 @@ const isLoading = ref(false)
 // 저장 상태
 const isSaving = ref(false)
 
+// 원본 데이터 (변경 감지용)
+const originalData = ref(null)
+const originalTagIds = ref([])
+const originalOptionGroups = ref([])
+const originalVariants = ref([])
+const originalMainImage = ref(null)
+
 // 상품 데이터
 const product = ref({
   name: '',
@@ -310,6 +317,14 @@ const totalStock = computed(() => {
   return variants.value.reduce((sum, v) => sum + (v.stock || 0), 0)
 })
 
+// 재고 0 경고 표시 여부 (옵션 조합이 있고, 총 재고가 0이고, 현재 품절 상태가 아닐 때)
+const showStockWarning = computed(() => {
+  return isVariantsGenerated.value &&
+         variants.value.length > 0 &&
+         totalStock.value === 0 &&
+         product.value.status !== 'SOLD_OUT'
+})
+
 // 예상 조합 수
 const expectedVariantCount = computed(() => {
   const parsedGroups = optionGroups.value
@@ -370,7 +385,7 @@ const validateForm = () => {
   return true
 }
 
-// API 요청 데이터 빌드
+// API 요청 데이터 빌드 (전체 - 신규 등록용)
 const buildRequestData = () => {
   // 옵션 그룹 필터링 (유효한 것만)
   const validOptionGroups = optionGroups.value
@@ -405,7 +420,7 @@ const buildRequestData = () => {
     name: product.value.name,
     summary: product.value.description,
     description: product.value.detailContent,
-    status: product.value.status === 'active' ? 'ON_SALE' : 'STOP_SELLING',
+    status: product.value.status,
     costPrice: product.value.costPrice,
     regularPrice: product.value.price,
     salePrice: discountPrice.value,
@@ -417,6 +432,7 @@ const buildRequestData = () => {
     options,
     variants: variants.value.map((v) => ({
       id: v.id && typeof v.id === 'number' && v.id < 1000000000 ? v.id : undefined,
+      name: v.optionLabel, // "블랙 / S" 같은 옵션 조합명
       sku: v.sku,
       optionValueIds: getOptionValueIds(v),
       additionalPrice: v.additionalPrice,
@@ -427,6 +443,66 @@ const buildRequestData = () => {
   return data
 }
 
+// 변경된 필드만 추출 (수정용 PATCH)
+const buildPatchData = () => {
+  if (!originalData.value) return buildRequestData()
+
+  const changes = {}
+  const orig = originalData.value
+
+  // 기본 필드 비교
+  if (product.value.name !== orig.name) changes.name = product.value.name
+  if (product.value.description !== orig.summary) changes.summary = product.value.description
+  if (product.value.detailContent !== orig.description) changes.description = product.value.detailContent
+  if (product.value.status !== orig.status) changes.status = product.value.status
+  if (product.value.costPrice !== orig.costPrice) changes.costPrice = product.value.costPrice
+  if (product.value.price !== orig.regularPrice) changes.regularPrice = product.value.price
+  if (discountPrice.value !== orig.salePrice) changes.salePrice = discountPrice.value
+  if (product.value.maxPurchase !== orig.maxPurchaseQuantity) changes.maxPurchaseQuantity = product.value.maxPurchase
+
+  // 할인 관련
+  const currentDiscountType = product.value.hasDiscount ? product.value.discountType : null
+  const currentDiscountValue = product.value.hasDiscount ? product.value.discountValue : 0
+  if (currentDiscountType !== orig.discountType) changes.discountType = currentDiscountType
+  if (currentDiscountValue !== orig.discountValue) changes.discountValue = currentDiscountValue
+
+  // 카테고리
+  const currentCategoryId = product.value.categoryId || null
+  if (currentCategoryId !== orig.category?.id) changes.categoryId = currentCategoryId
+
+  // 태그 비교 (배열)
+  const tagsSorted = [...selectedTagIds.value].sort()
+  const origTagsSorted = [...originalTagIds.value].sort()
+  if (JSON.stringify(tagsSorted) !== JSON.stringify(origTagsSorted)) {
+    changes.tagIds = selectedTagIds.value
+  }
+
+  // 옵션/variants는 변경 시 전체 전송 (복잡한 구조)
+  const currentVariantsJson = JSON.stringify(variants.value.map((v) => ({
+    id: v.id,
+    sku: v.sku,
+    stock: v.stock,
+    additionalPrice: v.additionalPrice,
+    optionLabel: v.optionLabel,
+  })))
+  const origVariantsJson = JSON.stringify(originalVariants.value.map((v) => ({
+    id: v.id,
+    sku: v.sku,
+    stock: v.stock,
+    additionalPrice: v.additionalPrice,
+    optionLabel: v.optionLabel,
+  })))
+
+  if (currentVariantsJson !== origVariantsJson) {
+    // 옵션/variants 변경됨 - 전체 빌드
+    const fullData = buildRequestData()
+    changes.options = fullData.options
+    changes.variants = fullData.variants
+  }
+
+  return changes
+}
+
 // 저장
 const handleSave = async () => {
   if (!validateForm()) return
@@ -434,22 +510,52 @@ const handleSave = async () => {
   isSaving.value = true
 
   try {
-    const requestData = buildRequestData()
-
     if (isEditMode.value) {
-      // 수정: PATCH (multipart/form-data)
-      const formData = new FormData()
-      formData.append('data', JSON.stringify(requestData))
+      // 수정: PATCH - 변경된 필드만 전송
+      const patchData = buildPatchData()
 
-      // 이미지 파일이 있으면 추가
+      // 변경사항이 없고 이미지도 없으면 스킵
+      if (Object.keys(patchData).length === 0 && !mainImage.value?.file) {
+        uiStore.showToast({ type: 'info', message: '변경된 내용이 없습니다.' })
+        isSaving.value = false
+        return
+      }
+
+      const formData = new FormData()
+      formData.append('data', JSON.stringify(patchData))
+
+      // 새 이미지 파일이 있으면 추가
       if (mainImage.value?.file) {
         formData.append('primaryImage', mainImage.value.file)
       }
 
       await $api.patchFormData(`/admin/products/${productId.value}`, formData)
       uiStore.showToast({ type: 'success', message: '상품이 수정되었습니다.' })
+
+      // 원본 데이터를 현재 상태로 갱신 (다음 수정을 위한 변경 감지용)
+      originalData.value = {
+        name: product.value.name,
+        summary: product.value.description,
+        description: product.value.detailContent,
+        status: product.value.status,
+        costPrice: product.value.costPrice,
+        regularPrice: product.value.price,
+        salePrice: discountPrice.value,
+        maxPurchaseQuantity: product.value.maxPurchase,
+        discountType: product.value.hasDiscount ? product.value.discountType : null,
+        discountValue: product.value.hasDiscount ? product.value.discountValue : 0,
+        category: product.value.categoryId ? { id: product.value.categoryId } : null,
+      }
+      originalTagIds.value = [...selectedTagIds.value]
+      originalVariants.value = JSON.parse(JSON.stringify(variants.value))
+      if (mainImage.value?.file) {
+        // 새 이미지 업로드 후 file 제거 (이미 서버에 저장됨)
+        mainImage.value = { preview: mainImage.value.preview, name: mainImage.value.name }
+      }
+      originalMainImage.value = mainImage.value ? { ...mainImage.value } : null
     } else {
-      // 등록: POST (multipart/form-data)
+      // 등록: POST - 전체 데이터 전송
+      const requestData = buildRequestData()
       const formData = new FormData()
       formData.append('data', JSON.stringify(requestData))
 
@@ -459,9 +565,10 @@ const handleSave = async () => {
 
       await $api.postFormData('/admin/products', formData)
       uiStore.showToast({ type: 'success', message: '상품이 등록되었습니다.' })
-    }
 
-    router.push('/admin/products')
+      // 등록 후 목록으로 이동
+      router.push('/admin/products')
+    }
   } catch (err) {
     uiStore.showToast({
       type: 'error',
@@ -495,8 +602,9 @@ const handleCancel = () => {
 
 // 상태 옵션
 const statusOptions = [
-  { value: 'active', label: '판매중' },
-  { value: 'inactive', label: '판매중지' },
+  { value: 'ON_SALE', label: '판매중' },
+  { value: 'DISCONTINUED', label: '판매중지' },
+  { value: 'SOLD_OUT', label: '품절'}
 ]
 
 // 상품 데이터 불러오기
@@ -519,7 +627,7 @@ const fetchProduct = async () => {
       discountType: data.discountType || 'percent',
       discountValue: data.discountValue || 0,
       maxPurchase: data.maxPurchaseQuantity || 10,
-      status: data.status === 'ON_SALE' ? 'active' : 'inactive',
+      status: data.status || 'ON_SALE',
     }
 
     // 태그 ID 목록 설정 (API 응답의 tags 배열에서 id 추출)
@@ -577,7 +685,8 @@ const fetchProduct = async () => {
           .sort((a, b) => a.optionIndex - b.optionIndex) // 옵션 그룹 순서대로 정렬
 
         const options = mappedOptions.map((o) => ({ name: o.name, value: o.value }))
-        const optionLabel = options.map((o) => o.value).join(' / ')
+        // 백엔드에서 name이 있으면 사용, 없으면 옵션값으로 조합
+        const optionLabel = variant.name || options.map((o) => o.value).join(' / ')
 
         return {
           id: variant.id || Date.now(),
@@ -591,6 +700,12 @@ const fetchProduct = async () => {
       })
       isVariantsGenerated.value = true
     }
+
+    // 원본 데이터 저장 (변경 감지용)
+    originalData.value = JSON.parse(JSON.stringify(data))
+    originalTagIds.value = data.tags ? data.tags.map((tag) => tag.id) : []
+    originalVariants.value = JSON.parse(JSON.stringify(variants.value))
+    originalMainImage.value = mainImage.value ? { ...mainImage.value } : null
 
     isLoading.value = false
   } catch (error) {
@@ -968,6 +1083,20 @@ onMounted(() => {
             </UiButton>
           </div>
         </template>
+
+        <!-- 재고 0 경고 배너 -->
+        <div
+          v-if="showStockWarning"
+          class="flex items-center gap-3 p-3 mb-4 bg-warning-50 border border-warning-200 rounded-lg"
+        >
+          <svg class="w-5 h-5 text-warning-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div class="flex-1">
+            <p class="text-sm font-medium text-warning-800">총 재고가 0개입니다</p>
+            <p class="text-xs text-warning-600 mt-0.5">저장 시 상품이 자동으로 품절 처리됩니다.</p>
+          </div>
+        </div>
 
         <!-- 벌크 액션 바 -->
         <div

@@ -25,6 +25,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  idKey: {
+    type: String,
+    default: 'id',
+  },
   emptyTitle: {
     type: String,
     default: '데이터가 없습니다',
@@ -46,8 +50,11 @@ const isPartialSelected = computed(() => {
   return props.selectedIds.length > 0 && props.selectedIds.length < props.items.length
 })
 
+// 아이템 ID 가져오기
+const getItemId = (item) => item[props.idKey]
+
 // 행 선택 여부
-const isSelected = (id) => props.selectedIds.includes(id)
+const isSelected = (item) => props.selectedIds.includes(getItemId(item))
 
 // 전체 선택/해제
 const toggleSelectAll = () => {
@@ -55,8 +62,8 @@ const toggleSelectAll = () => {
 }
 
 // 개별 선택
-const toggleSelect = (id) => {
-  emit('select', id)
+const toggleSelect = (item) => {
+  emit('select', getItemId(item))
 }
 
 // 행 클릭
@@ -108,19 +115,19 @@ const getAlignClass = (align) => {
         <tbody class="divide-y divide-neutral-100">
           <tr
             v-for="item in items"
-            :key="item.id"
+            :key="getItemId(item)"
             :class="[
               'hover:bg-neutral-50 transition-colors',
-              isSelected(item.id) ? 'bg-primary-50' : '',
+              isSelected(item) ? 'bg-primary-50' : '',
             ]"
           >
             <!-- Checkbox Cell -->
             <td v-if="selectable" class="px-4 py-3" @click.stop>
               <input
                 type="checkbox"
-                :checked="isSelected(item.id)"
+                :checked="isSelected(item)"
                 class="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
-                @change="toggleSelect(item.id)"
+                @change="toggleSelect(item)"
               >
             </td>
             <!-- Dynamic Cells -->
@@ -143,10 +150,10 @@ const getAlignClass = (align) => {
     <div class="md:hidden flex flex-col flex-1 min-h-0 overflow-auto divide-y divide-neutral-100">
       <div
         v-for="item in items"
-        :key="item.id"
+        :key="getItemId(item)"
         :class="[
           'p-4 transition-colors',
-          isSelected(item.id) ? 'bg-primary-50' : '',
+          isSelected(item) ? 'bg-primary-50' : '',
         ]"
       >
         <div class="flex items-start gap-3">
@@ -154,9 +161,9 @@ const getAlignClass = (align) => {
           <input
             v-if="selectable"
             type="checkbox"
-            :checked="isSelected(item.id)"
+            :checked="isSelected(item)"
             class="mt-1 w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
-            @change="toggleSelect(item.id)"
+            @change="toggleSelect(item)"
           >
           <!-- Card Content -->
           <div class="flex-1 min-w-0" @click="handleRowClick(item)">

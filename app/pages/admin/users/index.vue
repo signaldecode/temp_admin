@@ -7,13 +7,15 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { useCatalogStore } from '~/stores/catalog'
 import { useApi } from '~/composables/useApi'
 import { formatCurrency } from '~/utils/formatters'
 
 const router = useRouter()
 const route = useRoute()
 const uiStore = useUiStore()
-const { get } = useApi()
+const catalogStore = useCatalogStore()
+const { get, patch } = useApi()
 
 // 검색 필터
 const filterGrade = ref('')
@@ -59,21 +61,13 @@ const isPartialSelected = computed(() => {
 const showGradeModal = ref(false)
 const selectedGrade = ref('')
 
-// 등급 옵션 (API에서 조회)
-const gradeOptions = ref([])
-
-// 등급 목록 조회
-const fetchGrades = async () => {
-  try {
-    const response = await get('/admin/users/grades')
-    gradeOptions.value = response.data.map((g) => ({
-      value: g.grade_id,
-      label: g.name,
-    }))
-  } catch (error) {
-    console.error('등급 목록 조회 실패:', error)
-  }
-}
+// 등급 옵션 (catalog store에서 조회)
+const gradeOptions = computed(() =>
+  catalogStore.grades.map((g) => ({
+    value: g.grade_id,
+    label: g.name,
+  }))
+)
 
 // 회원 목록 조회 API
 const fetchUsers = async () => {
@@ -197,26 +191,31 @@ const openGradeModal = () => {
 const handleGradeChange = async () => {
   if (!selectedGrade.value) return
 
-  // 실제로는 API 호출
-  console.log('등급 변경:', selectedIds.value, '→', selectedGrade.value)
+  const count = selectedIds.value.length
 
-  // Mock: 로컬 데이터 업데이트
-  users.value = users.value.map((user) => {
-    if (selectedIds.value.includes(user.id)) {
-      return { ...user, grade: selectedGrade.value }
-    }
-    return user
-  })
+  try {
+    await patch('/admin/users/grades', {
+      userIds: selectedIds.value,
+      gradeId: selectedGrade.value,
+    })
 
-  showGradeModal.value = false
-  selectedIds.value = []
+    showGradeModal.value = false
+    selectedIds.value = []
 
-  // 성공 알림 (UI Store 사용)
-  const uiStore = useUiStore()
-  uiStore.showToast({
-    type: 'success',
-    message: `${selectedIds.value.length || '선택한'}명의 회원 등급이 변경되었습니다.`,
-  })
+    uiStore.showToast({
+      type: 'success',
+      message: `${count}명의 회원 등급이 변경되었습니다.`,
+    })
+
+    // 목록 새로고침
+    await fetchUsers()
+  } catch (err) {
+    console.error('Grade change error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '등급 변경에 실패했습니다.',
+    })
+  }
 }
 
 // 회원 상세로 이동
@@ -229,7 +228,6 @@ onMounted(() => {
   if (route.query.type) searchType.value = route.query.type
   if (route.query.keyword) searchKeyword.value = route.query.keyword
   if (route.query.page) currentPage.value = parseInt(route.query.page) || 1
-  fetchGrades()
   fetchUsers()
 })
 </script>
@@ -309,6 +307,7 @@ onMounted(() => {
       :items="users"
       :selected-ids="selectedIds"
       selectable
+      id-key="user_id"
       empty-title="검색 결과가 없습니다"
       empty-description="다른 검색어로 다시 시도해보세요."
       @select="handleSelect"

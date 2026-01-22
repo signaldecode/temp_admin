@@ -8,12 +8,14 @@
  * - 주문 이력
  */
 import { useUiStore } from '~/stores/ui'
+import { useCatalogStore } from '~/stores/catalog'
 import { formatCurrency, formatDate } from '~/utils/formatters'
 
 const route = useRoute()
 const router = useRouter()
 const { $api } = useNuxtApp()
 const uiStore = useUiStore()
+const catalogStore = useCatalogStore()
 
 const orderId = computed(() => route.params.id)
 
@@ -25,8 +27,8 @@ const isChangingStatus = ref(false)
 // 주문 정보
 const order = ref(null)
 
-// 택배사 목록
-const carriers = ref([])
+// 택배사 목록 (스토어에서 가져옴)
+const carriers = computed(() => catalogStore.carriers)
 
 // 주문 상태 매핑
 const statusMap = {
@@ -87,15 +89,6 @@ const fetchOrder = async () => {
   }
 }
 
-// 택배사 목록 로드
-const fetchCarriers = async () => {
-  try {
-    const response = await $api.get('/admin/delivery/carriers')
-    carriers.value = response.data || []
-  } catch (err) {
-    console.error('Carriers fetch error:', err)
-  }
-}
 
 // 주문 회원 정보 아이템
 const userInfoItems = computed(() => {
@@ -183,9 +176,19 @@ const canChangeStatus = computed(() => {
 
 const openStatusModal = () => {
   selectedStatus.value = order.value.status
-  selectedCarrierId.value = ''
-  trackingNumber.value = ''
   statusReason.value = ''
+
+  // 기존 배송 정보가 있으면 미리 채워줌
+  const shipping = order.value.shipping
+  if (shipping?.trackingNumber) {
+    trackingNumber.value = shipping.trackingNumber
+    // 택배사 ID (API 응답 구조에 따라 carrierId 또는 carrier.id)
+    selectedCarrierId.value = shipping.carrierId || shipping.carrier?.id || ''
+  } else {
+    trackingNumber.value = ''
+    selectedCarrierId.value = ''
+  }
+
   showStatusModal.value = true
 }
 
@@ -232,7 +235,6 @@ const handleStatusChange = async () => {
 // 초기 로드
 onMounted(() => {
   fetchOrder()
-  fetchCarriers()
 })
 </script>
 
