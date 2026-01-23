@@ -193,6 +193,19 @@ export default defineNuxtPlugin(() => {
 
       return await requestWithRetry(requestFn)
     },
+
+    /**
+     * PUT FormData 요청 (multipart/form-data)
+     */
+    async putFormData(endpoint, formData) {
+      const requestFn = () => $fetch(`${baseUrl}${endpoint}`, {
+        method: 'PUT',
+        credentials: 'include',
+        body: formData,
+      })
+
+      return await requestWithRetry(requestFn)
+    },
   }
 
   return {

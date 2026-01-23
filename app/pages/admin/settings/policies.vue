@@ -1,15 +1,13 @@
 <script setup>
 /**
  * 정책 설정 페이지
- * - 주문 정책
- * - 배송 정책
- * - 상품 정책
- * - 반품 정책
+ * - GET /admin/policy - 전체 정책 조회
+ * - PUT /admin/policy - 전체 정책 수정
  */
 
 import { useUiStore } from '~/stores/ui'
-import { formatCurrency } from '~/utils/formatters'
 
+const { $api } = useNuxtApp()
 const uiStore = useUiStore()
 
 // 로딩/저장 상태
@@ -20,115 +18,113 @@ const isSaving = ref(false)
 const activeTab = ref('order')
 const tabs = [
   { id: 'order', label: '주문 정책' },
-  { id: 'shipping', label: '배송 정책' },
+  { id: 'delivery', label: '배송 정책' },
   { id: 'product', label: '상품 정책' },
-  { id: 'return', label: '반품 정책' },
+  { id: 'returnPolicy', label: '반품 정책' },
 ]
 
-// 정책 데이터
-const policies = ref({
-  // 주문 정책
-  order: {
-    minOrderAmount: 0,
-    maxOrderAmount: 10000000,
-    maxOrderQuantity: 100,
-    orderCancelTime: 24,
-    autoConfirmDays: 7,
-    pointEarnRate: 1,
-    pointUseMinOrder: 10000,
-    pointUseMinAmount: 1000,
-  },
-  // 배송 정책
-  shipping: {
-    freeShippingAmount: 50000,
-    defaultShippingFee: 3000,
-    additionalAreaFee: 3000,
-    additionalAreas: '제주, 도서산간',
-    estimatedDays: '2-3',
-    shippingNotice: '',
-  },
-  // 상품 정책
-  product: {
-    defaultTaxRate: 10,
-    displaySoldout: true,
-    displayStock: false,
-    lowStockThreshold: 10,
-    maxOptionCount: 3,
-    maxImageCount: 10,
-    productNotice: '',
-  },
-  // 반품 정책
-  return: {
-    returnPeriod: 7,
-    exchangePeriod: 7,
-    returnShippingFee: 3000,
-    exchangeShippingFee: 6000,
-    returnAddress: '',
-    returnNotice: '',
-    nonReturnableItems: '',
-  },
+// 정책 데이터 (API 구조에 맞춤)
+const order = ref({
+  minOrderAmount: 0,
+  maxOrderAmount: 10000000,
+  maxOrderQuantity: 99,
+  cancelHours: 24,
+  autoConfirmDays: 7,
+  pointRate: 1,
+  pointMinOrder: 10000,
+  pointMinUse: 1000,
 })
 
-// Mock 데이터 로드
-onMounted(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 500))
+const delivery = ref({
+  freeShippingAmount: 50000,
+  baseShippingFee: 3000,
+  islandExtraFee: 3000,
+  islandRegions: '',
+  estimatedDays: '2-3일',
+  guideText: '',
+})
 
-  policies.value = {
-    order: {
-      minOrderAmount: 10000,
-      maxOrderAmount: 10000000,
-      maxOrderQuantity: 99,
-      orderCancelTime: 24,
-      autoConfirmDays: 7,
-      pointEarnRate: 1,
-      pointUseMinOrder: 10000,
-      pointUseMinAmount: 1000,
-    },
-    shipping: {
-      freeShippingAmount: 50000,
-      defaultShippingFee: 3000,
-      additionalAreaFee: 3000,
-      additionalAreas: '제주도, 울릉도, 도서산간 지역',
-      estimatedDays: '2~3',
-      shippingNotice: '평일 오후 2시 이전 주문 시 당일 출고됩니다.\n주말 및 공휴일은 배송이 불가합니다.',
-    },
-    product: {
-      defaultTaxRate: 10,
-      displaySoldout: true,
-      displayStock: false,
-      lowStockThreshold: 10,
-      maxOptionCount: 3,
-      maxImageCount: 10,
-      productNotice: '상품 이미지는 실제 상품과 다소 차이가 있을 수 있습니다.',
-    },
-    return: {
-      returnPeriod: 7,
-      exchangePeriod: 7,
-      returnShippingFee: 3000,
-      exchangeShippingFee: 6000,
-      returnAddress: '서울시 강남구 테헤란로 123 반품센터',
-      returnNotice: '상품 수령 후 7일 이내 반품 신청이 가능합니다.\n단순 변심에 의한 반품 시 왕복 배송비가 부과됩니다.',
-      nonReturnableItems: '개봉한 상품, 착용 흔적이 있는 의류, 세탁한 상품, 향수/화장품 등',
-    },
+const product = ref({
+  defaultTaxRate: 10,
+  lowStockThreshold: 10,
+  maxOptions: 100,
+  maxImages: 10,
+  showSoldout: true,
+  showStock: false,
+  guideText: '',
+})
+
+const returnPolicy = ref({
+  returnDays: 7,
+  exchangeDays: 7,
+  returnFee: 3000,
+  exchangeFee: 6000,
+  returnAddress: '',
+  nonReturnable: '',
+  guideText: '',
+})
+
+// 정책 데이터 로드
+const fetchPolicies = async () => {
+  isLoading.value = true
+
+  try {
+    const response = await $api.get('/admin/policy')
+    const data = response.data || response
+
+    if (data.order) {
+      order.value = { ...order.value, ...data.order }
+    }
+    if (data.delivery) {
+      delivery.value = { ...delivery.value, ...data.delivery }
+    }
+    if (data.product) {
+      product.value = { ...product.value, ...data.product }
+    }
+    if (data.returnPolicy) {
+      returnPolicy.value = { ...returnPolicy.value, ...data.returnPolicy }
+    }
+  } catch (error) {
+    console.error('정책 로드 실패:', error)
+    uiStore.showToast({ type: 'error', message: '정책을 불러오지 못했습니다.' })
+  } finally {
+    isLoading.value = false
   }
-
-  isLoading.value = false
-})
+}
 
 // 저장
 const handleSave = async () => {
   isSaving.value = true
 
-  // 실제로는 API 호출
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  try {
+    const requestData = {
+      order: order.value,
+      delivery: delivery.value,
+      product: product.value,
+      returnPolicy: returnPolicy.value,
+    }
 
-  isSaving.value = false
+    await $api.put('/admin/policy', requestData)
 
-  uiStore.showToast({
-    type: 'success',
-    message: '정책 설정이 저장되었습니다.',
-  })
+    uiStore.showToast({
+      type: 'success',
+      message: '정책 설정이 저장되었습니다.',
+    })
+  } catch (error) {
+    console.error('정책 저장 실패:', error)
+    uiStore.showToast({
+      type: 'error',
+      message: error.data?.message || '저장에 실패했습니다.',
+    })
+  } finally {
+    isSaving.value = false
+  }
 }
+
+// 초기 로드
+onMounted(() => {
+  fetchPolicies()
+})
 </script>
 
 <template>
@@ -181,7 +177,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.order.minOrderAmount"
+                  v-model.number="order.minOrderAmount"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -195,7 +191,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.order.maxOrderAmount"
+                  v-model.number="order.maxOrderAmount"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -208,7 +204,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.order.maxOrderQuantity"
+                  v-model.number="order.maxOrderQuantity"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -221,7 +217,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.order.orderCancelTime"
+                  v-model.number="order.cancelHours"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -242,7 +238,7 @@ const handleSave = async () => {
             </label>
             <div class="flex items-center gap-2">
               <input
-                v-model.number="policies.order.autoConfirmDays"
+                v-model.number="order.autoConfirmDays"
                 type="number"
                 class="w-24 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
@@ -262,7 +258,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.order.pointEarnRate"
+                  v-model.number="order.pointRate"
                   type="number"
                   step="0.1"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
@@ -276,7 +272,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.order.pointUseMinOrder"
+                  v-model.number="order.pointMinOrder"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -289,7 +285,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.order.pointUseMinAmount"
+                  v-model.number="order.pointMinUse"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -301,7 +297,7 @@ const handleSave = async () => {
       </div>
 
       <!-- Tab Content: 배송 정책 -->
-      <div v-if="activeTab === 'shipping'" class="space-y-6">
+      <div v-if="activeTab === 'delivery'" class="space-y-6">
         <UiCard>
           <template #header>
             <h3 class="font-semibold text-neutral-900">배송비 설정</h3>
@@ -313,7 +309,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.shipping.freeShippingAmount"
+                  v-model.number="delivery.freeShippingAmount"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -326,7 +322,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.shipping.defaultShippingFee"
+                  v-model.number="delivery.baseShippingFee"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -339,7 +335,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.shipping.additionalAreaFee"
+                  v-model.number="delivery.islandExtraFee"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -351,10 +347,10 @@ const handleSave = async () => {
                 추가 배송비 지역
               </label>
               <input
-                v-model="policies.shipping.additionalAreas"
+                v-model="delivery.islandRegions"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="제주도, 도서산간"
+                placeholder="제주,울릉도"
               >
             </div>
           </div>
@@ -371,12 +367,11 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model="policies.shipping.estimatedDays"
+                  v-model="delivery.estimatedDays"
                   type="text"
-                  class="w-24 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="2~3"
+                  class="w-32 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="2-3일"
                 >
-                <span class="text-sm text-neutral-500">영업일</span>
               </div>
             </div>
             <div>
@@ -384,7 +379,7 @@ const handleSave = async () => {
                 배송 안내문
               </label>
               <textarea
-                v-model="policies.shipping.shippingNotice"
+                v-model="delivery.guideText"
                 rows="4"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
                 placeholder="배송 관련 안내 사항을 입력하세요"
@@ -407,7 +402,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.product.defaultTaxRate"
+                  v-model.number="product.defaultTaxRate"
                   type="number"
                   class="w-24 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -420,7 +415,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.product.lowStockThreshold"
+                  v-model.number="product.lowStockThreshold"
                   type="number"
                   class="w-24 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -433,7 +428,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.product.maxOptionCount"
+                  v-model.number="product.maxOptions"
                   type="number"
                   class="w-24 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -446,7 +441,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.product.maxImageCount"
+                  v-model.number="product.maxImages"
                   type="number"
                   class="w-24 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -463,7 +458,7 @@ const handleSave = async () => {
           <div class="space-y-4">
             <label class="flex items-center gap-3 cursor-pointer">
               <input
-                v-model="policies.product.displaySoldout"
+                v-model="product.showSoldout"
                 type="checkbox"
                 class="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
               >
@@ -471,7 +466,7 @@ const handleSave = async () => {
             </label>
             <label class="flex items-center gap-3 cursor-pointer">
               <input
-                v-model="policies.product.displayStock"
+                v-model="product.showStock"
                 type="checkbox"
                 class="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
               >
@@ -485,7 +480,7 @@ const handleSave = async () => {
             <h3 class="font-semibold text-neutral-900">상품 안내문</h3>
           </template>
           <textarea
-            v-model="policies.product.productNotice"
+            v-model="product.guideText"
             rows="4"
             class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
             placeholder="상품 공통 안내 사항을 입력하세요"
@@ -494,7 +489,7 @@ const handleSave = async () => {
       </div>
 
       <!-- Tab Content: 반품 정책 -->
-      <div v-if="activeTab === 'return'" class="space-y-6">
+      <div v-if="activeTab === 'returnPolicy'" class="space-y-6">
         <UiCard>
           <template #header>
             <h3 class="font-semibold text-neutral-900">반품/교환 기간</h3>
@@ -507,7 +502,7 @@ const handleSave = async () => {
               <div class="flex items-center gap-2">
                 <span class="text-sm text-neutral-500">수령 후</span>
                 <input
-                  v-model.number="policies.return.returnPeriod"
+                  v-model.number="returnPolicy.returnDays"
                   type="number"
                   class="w-20 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -521,7 +516,7 @@ const handleSave = async () => {
               <div class="flex items-center gap-2">
                 <span class="text-sm text-neutral-500">수령 후</span>
                 <input
-                  v-model.number="policies.return.exchangePeriod"
+                  v-model.number="returnPolicy.exchangeDays"
                   type="number"
                   class="w-20 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -542,7 +537,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.return.returnShippingFee"
+                  v-model.number="returnPolicy.returnFee"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -556,7 +551,7 @@ const handleSave = async () => {
               </label>
               <div class="flex items-center gap-2">
                 <input
-                  v-model.number="policies.return.exchangeShippingFee"
+                  v-model.number="returnPolicy.exchangeFee"
                   type="number"
                   class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
@@ -572,7 +567,7 @@ const handleSave = async () => {
             <h3 class="font-semibold text-neutral-900">반품 주소</h3>
           </template>
           <input
-            v-model="policies.return.returnAddress"
+            v-model="returnPolicy.returnAddress"
             type="text"
             class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             placeholder="반품 수거지 주소를 입력하세요"
@@ -584,10 +579,10 @@ const handleSave = async () => {
             <h3 class="font-semibold text-neutral-900">반품 불가 품목</h3>
           </template>
           <textarea
-            v-model="policies.return.nonReturnableItems"
+            v-model="returnPolicy.nonReturnable"
             rows="3"
             class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
-            placeholder="반품이 불가능한 상품 유형을 입력하세요"
+            placeholder="반품이 불가능한 상품 유형을 입력하세요 (쉼표로 구분)"
           />
         </UiCard>
 
@@ -596,7 +591,7 @@ const handleSave = async () => {
             <h3 class="font-semibold text-neutral-900">반품/교환 안내문</h3>
           </template>
           <textarea
-            v-model="policies.return.returnNotice"
+            v-model="returnPolicy.guideText"
             rows="4"
             class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
             placeholder="반품/교환 관련 안내 사항을 입력하세요"
