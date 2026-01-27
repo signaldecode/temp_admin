@@ -5,237 +5,171 @@
  * - 결제 정보
  * - 배송지 정보
  * - 주문 상품 정보
- * - 쿠폰/적립금 사용 정보
- * - 관리자 메모
+ * - 주문 이력
  */
-
 import { useUiStore } from '~/stores/ui'
+import { useCatalogStore } from '~/stores/catalog'
+import { formatCurrency, formatDate } from '~/utils/formatters'
 
 const route = useRoute()
 const router = useRouter()
+const { $api } = useNuxtApp()
 const uiStore = useUiStore()
+const catalogStore = useCatalogStore()
 
 const orderId = computed(() => route.params.id)
 
 // 로딩 상태
 const isLoading = ref(true)
-const isSavingMemo = ref(false)
+const error = ref(null)
+const isChangingStatus = ref(false)
 
 // 주문 정보
 const order = ref(null)
 
-// 메모 히스토리
-const memos = ref([])
+// 택배사 목록 (스토어에서 가져옴)
+const carriers = computed(() => catalogStore.carriers)
 
 // 주문 상태 매핑
 const statusMap = {
-  pending: { label: '결제대기', variant: 'warning' },
-  paid: { label: '결제완료', variant: 'info' },
-  preparing: { label: '상품준비중', variant: 'primary' },
-  shipping: { label: '배송중', variant: 'info' },
-  delivered: { label: '배송완료', variant: 'success' },
-  cancelled: { label: '취소', variant: 'error' },
+  PENDING: { label: '결제대기', variant: 'neutral' },
+  PAID: { label: '주문완료', variant: 'primary' },
+  PREPARING: { label: '상품준비중', variant: 'warning' },
+  SHIPPING: { label: '배송중', variant: 'info' },
+  DELIVERED: { label: '배송완료', variant: 'success' },
+  CANCELLED: { label: '취소', variant: 'error' },
+  REFUNDED: { label: '환불', variant: 'error' },
 }
 
 // 결제 수단 매핑
 const paymentMethodMap = {
-  card: '신용카드',
-  bank: '무통장입금',
-  kakao: '카카오페이',
-  naver: '네이버페이',
-  toss: '토스페이',
+  CARD: '신용카드',
+  BANK_TRANSFER: '계좌이체',
+  VIRTUAL_ACCOUNT: '가상계좌',
+  PHONE: '휴대폰',
+  KAKAO_PAY: '카카오페이',
+  NAVER_PAY: '네이버페이',
+  POINT: '포인트',
 }
 
 // 결제 상태 매핑
 const paymentStatusMap = {
-  pending: { label: '결제대기', variant: 'warning' },
-  completed: { label: '결제완료', variant: 'success' },
-  failed: { label: '결제실패', variant: 'error' },
-  refunded: { label: '환불완료', variant: 'neutral' },
+  PENDING: { label: '결제대기', variant: 'warning' },
+  PAID: { label: '결제완료', variant: 'success' },
+  FAILED: { label: '결제실패', variant: 'error' },
+  CANCELLED: { label: '취소', variant: 'neutral' },
+  REFUNDED: { label: '환불완료', variant: 'neutral' },
+  PARTIAL_REFUNDED: { label: '부분환불', variant: 'warning' },
 }
 
-// 택배사 옵션
-const carrierOptions = [
-  { value: 'cj', label: 'CJ대한통운' },
-  { value: 'hanjin', label: '한진택배' },
-  { value: 'lotte', label: '롯데택배' },
-  { value: 'logen', label: '로젠택배' },
-  { value: 'post', label: '우체국택배' },
-  { value: 'gs', label: 'GS postbox' },
-  { value: 'etc', label: '기타' },
+// 주문 상태 옵션
+const allStatusOptions = [
+  { value: 'PENDING', label: '결제대기' },
+  { value: 'PAID', label: '주문완료' },
+  { value: 'PREPARING', label: '상품준비중' },
+  { value: 'SHIPPING', label: '배송중' },
+  { value: 'DELIVERED', label: '배송완료' },
+  { value: 'CANCELLED', label: '취소' },
+  { value: 'REFUNDED', label: '환불' },
 ]
 
-// Mock 데이터 로드
-onMounted(() => {
-  setTimeout(() => {
-    order.value = {
-      id: orderId.value,
-      orderNo: 'ORD20250108001',
-      status: 'paid',
-      createdAt: '2025-01-08 14:30:25',
+// 상태별 허용 전이 규칙
+// - 취소: 상품준비중 전까지만 가능 (배송 프로세스 시작 전)
+// - 환불: 배송완료 후에도 가능 (반품 후 환불)
+// - 상품준비중 이후: 순방향 진행 + 환불만 가능 (역방향 불가)
+const allowedTransitions = {
+  PENDING: ['PAID', 'CANCELLED'],           // 결제대기 → 주문완료, 취소
+  PAID: ['PREPARING', 'CANCELLED', 'REFUNDED'], // 주문완료 → 상품준비중, 취소, 환불
+  PREPARING: ['SHIPPING', 'DELIVERED'],     // 상품준비중 → 배송중, 배송완료 (취소 불가, 환불은 배송완료 후)
+  SHIPPING: ['DELIVERED'],                  // 배송중 → 배송완료만 가능
+  DELIVERED: ['REFUNDED'],                  // 배송완료 → 환불 가능 (반품 처리)
+  CANCELLED: [],                            // 취소 → 변경 불가
+  REFUNDED: [],                             // 환불 → 변경 불가
+}
 
-      // 회원 정보
-      user: {
-        id: 'user001',
-        name: '김철수',
-        phone: '010-1234-5678',
-        email: 'kim@example.com',
-        grade: 'VIP',
-      },
+// 현재 상태에서 변경 가능한 상태 옵션
+const statusOptions = computed(() => {
+  const currentStatus = order.value?.status
+  if (!currentStatus) return []
 
-      // 결제 정보
-      payment: {
-        method: 'card',
-        cardName: '삼성카드',
-        cardNumber: '**** **** **** 1234',
-        installment: '일시불',
-        status: 'completed',
-        paidAt: '2025-01-08 14:32:10',
-        transactionId: 'TXN20250108143210001',
-      },
-
-      // 배송지 정보
-      shipping: {
-        recipientName: '김철수',
-        recipientPhone: '010-1234-5678',
-        zipcode: '06234',
-        address1: '서울시 강남구 테헤란로 123',
-        address2: '456호',
-        memo: '부재 시 경비실에 맡겨주세요',
-        trackingNumber: '',
-        carrier: '',
-      },
-
-      // 주문 상품
-      items: [
-        {
-          id: 1,
-          productId: 'PROD001',
-          productName: '겨울 패딩 자켓 프리미엄',
-          option: '블랙 / XL',
-          quantity: 1,
-          unitPrice: 129000,
-          totalPrice: 129000,
-          imageUrl: '',
-        },
-        {
-          id: 2,
-          productId: 'PROD002',
-          productName: '울 니트 스웨터',
-          option: '그레이 / L',
-          quantity: 2,
-          unitPrice: 59000,
-          totalPrice: 118000,
-        },
-        {
-          id: 3,
-          productId: 'PROD003',
-          productName: '캐시미어 머플러',
-          option: '네이비',
-          quantity: 1,
-          unitPrice: 45000,
-          totalPrice: 45000,
-        },
-      ],
-
-      // 금액 정보
-      amounts: {
-        productTotal: 292000,    // 상품 합계
-        shippingFee: 0,          // 배송비
-        couponDiscount: 30000,   // 쿠폰 할인
-        pointUsed: 10000,        // 적립금 사용
-        totalAmount: 252000,     // 최종 결제금액
-      },
-
-      // 쿠폰/적립금 상세
-      discount: {
-        coupon: {
-          code: 'WINTER2025',
-          name: '겨울 시즌 할인 쿠폰',
-          discountAmount: 30000,
-        },
-        point: {
-          used: 10000,
-          earned: 2520, // 결제금액의 1%
-        },
-      },
-
-      // 주문 이력
-      history: [
-        { date: '2025-01-08 14:30:25', action: '주문 생성', description: '주문이 접수되었습니다.' },
-        { date: '2025-01-08 14:32:10', action: '결제 완료', description: '신용카드 결제가 완료되었습니다.' },
-      ],
-    }
-
-    // 메모 히스토리 (Mock 데이터)
-    memos.value = [
-      {
-        id: 1,
-        content: 'VIP 고객, 포장 신경 써주세요.',
-        adminId: 'admin001',
-        adminName: '김관리',
-        createdAt: '2025-01-08 15:00:00',
-      },
-      {
-        id: 2,
-        content: '고객 요청으로 선물 포장 추가함',
-        adminId: 'admin002',
-        adminName: '이담당',
-        createdAt: '2025-01-08 16:30:00',
-      },
-    ]
-
-    isLoading.value = false
-  }, 500)
+  const allowed = allowedTransitions[currentStatus] || []
+  return allStatusOptions.filter(opt => allowed.includes(opt.value))
 })
 
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
+// 데이터 로드
+const fetchOrder = async () => {
+  isLoading.value = true
+  error.value = null
+
+  try {
+    const response = await $api.get(`/admin/orders/${orderId.value}`)
+    order.value = response.data
+  } catch (err) {
+    console.error('Order fetch error:', err)
+    error.value = err.data?.message || err.message || '주문 정보를 불러오는데 실패했습니다.'
+  } finally {
+    isLoading.value = false
+  }
 }
 
-// 택배사 라벨 가져오기
-const getCarrierLabel = (carrier) => {
-  return carrierOptions.find(c => c.value === carrier)?.label || carrier
-}
 
 // 주문 회원 정보 아이템
 const userInfoItems = computed(() => {
-  if (!order.value) return []
+  if (!order.value?.customer) return []
+  const c = order.value.customer
   return [
-    { key: 'userId', label: '유저ID', value: order.value.user.id },
-    { key: 'name', label: '이름', value: order.value.user.name },
-    { key: 'phone', label: '연락처', value: order.value.user.phone },
-    { key: 'email', label: '이메일', value: order.value.user.email },
+    { key: 'userId', label: '유저ID', value: c.userId },
+    { key: 'name', label: '이름', value: c.name },
+    { key: 'phone', label: '연락처', value: c.phone || '-' },
+    { key: 'email', label: '이메일', value: c.email || '-' },
   ]
 })
 
 // 결제 정보 아이템
 const paymentInfoItems = computed(() => {
-  if (!order.value) return []
+  if (!order.value?.payment) return []
   const p = order.value.payment
-  return [
+  const items = [
     { key: 'method', label: '결제수단', value: paymentMethodMap[p.method] || p.method },
-    { key: 'card', label: '카드정보', value: `${p.cardName} (${p.cardNumber})`, show: !!p.cardName },
-    { key: 'installment', label: '할부', value: p.installment, show: !!p.installment },
-    { key: 'status', label: '결제상태', value: p.status },
-    { key: 'paidAt', label: '결제일시', value: p.paidAt || '-' },
-    { key: 'transactionId', label: '거래번호', value: p.transactionId },
   ]
+
+  if (p.cardCompany) {
+    items.push({ key: 'card', label: '카드정보', value: `${p.cardCompany} (${p.cardNumber || ''})` })
+  }
+
+  if (p.installment !== undefined && p.installment !== null) {
+    items.push({ key: 'installment', label: '할부', value: p.installment === 0 ? '일시불' : `${p.installment}개월` })
+  }
+
+  items.push(
+    { key: 'status', label: '결제상태', value: p.status },
+    { key: 'paidAt', label: '결제일시', value: formatDate(p.paidAt) },
+    { key: 'transactionId', label: '거래번호', value: p.transactionId || '-' }
+  )
+
+  return items
 })
 
 // 배송지 정보 아이템
 const shippingInfoItems = computed(() => {
-  if (!order.value) return []
+  if (!order.value?.shipping) return []
   const s = order.value.shipping
-  return [
+  const items = [
     { key: 'recipientName', label: '수령인', value: s.recipientName },
     { key: 'recipientPhone', label: '연락처', value: s.recipientPhone },
-    { key: 'zipcode', label: '우편번호', value: s.zipcode },
-    { key: 'address', label: '주소', value: s.address1 },
-    { key: 'memo', label: '배송메모', value: s.memo, show: !!s.memo },
-    { key: 'tracking', label: '운송장', value: s.trackingNumber, show: !!s.trackingNumber },
+    { key: 'postalCode', label: '우편번호', value: s.postalCode },
+    { key: 'address', label: '주소', value: s.address },
   ]
+
+  if (s.deliveryMessage) {
+    items.push({ key: 'memo', label: '배송메모', value: s.deliveryMessage })
+  }
+
+  if (s.trackingNumber) {
+    items.push({ key: 'tracking', label: '운송장', value: s.trackingNumber })
+  }
+
+  return items
 })
 
 // 목록으로 돌아가기
@@ -248,117 +182,136 @@ const goToUser = (userId) => {
   router.push(`/admin/users/${userId}`)
 }
 
-// 메모 추가
-const handleAddMemo = async (memoData) => {
-  isSavingMemo.value = true
-
-  // 실제로는 API 호출
-  await new Promise((resolve) => setTimeout(resolve, 500))
-
-  const newMemo = {
-    id: Date.now(),
-    content: memoData.content,
-    adminId: memoData.adminId,
-    adminName: memoData.adminName,
-    createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
-  }
-
-  // 최신순으로 맨 앞에 추가
-  memos.value = [newMemo, ...memos.value]
-  isSavingMemo.value = false
-
-  uiStore.showToast({
-    type: 'success',
-    message: '메모가 등록되었습니다.',
-  })
-}
-
-// 메모 수정
-const handleEditMemo = async (memoData) => {
-  isSavingMemo.value = true
-
-  // 실제로는 API 호출
-  await new Promise((resolve) => setTimeout(resolve, 500))
-
-  const index = memos.value.findIndex((m) => m.id === memoData.id)
-  if (index > -1) {
-    memos.value[index] = {
-      ...memos.value[index],
-      content: memoData.content,
-      updatedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
-    }
-  }
-
-  isSavingMemo.value = false
-
-  uiStore.showToast({
-    type: 'success',
-    message: '메모가 수정되었습니다.',
-  })
-}
-
-// 메모 삭제
-const handleDeleteMemo = async (memoId) => {
-  // 실제로는 API 호출
-  await new Promise((resolve) => setTimeout(resolve, 300))
-
-  memos.value = memos.value.filter((m) => m.id !== memoId)
-
-  uiStore.showToast({
-    type: 'success',
-    message: '메모가 삭제되었습니다.',
-  })
-}
-
-// 상태 변경
+// 상태 변경 모달
 const showStatusModal = ref(false)
 const selectedStatus = ref('')
-const trackingCarrier = ref('')
+const selectedCarrierId = ref('')
 const trackingNumber = ref('')
-
-const statusOptions = [
-  { value: 'pending', label: '결제대기' },
-  { value: 'paid', label: '결제완료' },
-  { value: 'preparing', label: '상품준비중' },
-  { value: 'shipping', label: '배송중' },
-  { value: 'delivered', label: '배송완료' },
-  { value: 'cancelled', label: '취소' },
-]
+const statusReason = ref('')
+const showConfirmStep = ref(false) // 확인 단계 표시 여부
 
 // 배송중 상태에서 송장번호 필수 여부
-const isShippingSelected = computed(() => selectedStatus.value === 'shipping')
+const isShippingSelected = computed(() => selectedStatus.value === 'SHIPPING')
 const canChangeStatus = computed(() => {
   if (!selectedStatus.value || selectedStatus.value === order.value?.status) return false
-  if (isShippingSelected.value && (!trackingCarrier.value || !trackingNumber.value.trim())) return false
+  if (isShippingSelected.value && (!selectedCarrierId.value || !trackingNumber.value.trim())) return false
   return true
 })
 
+// 상태 변경 가능 여부
+const canOpenStatusModal = computed(() => {
+  return statusOptions.value.length > 0
+})
+
+// 상태 변경 불가 사유 메시지
+const getStatusChangeBlockedMessage = () => {
+  const currentStatus = order.value?.status
+  if (currentStatus === 'DELIVERED') {
+    return '배송완료 상태에서는 상태를 변경할 수 없습니다.\n환불이 필요하면 별도로 환불 처리를 진행해 주세요.'
+  }
+  if (currentStatus === 'CANCELLED') {
+    return '취소된 주문은 상태를 변경할 수 없습니다.'
+  }
+  if (currentStatus === 'REFUNDED') {
+    return '환불된 주문은 상태를 변경할 수 없습니다.'
+  }
+  return '현재 상태에서는 변경할 수 있는 상태가 없습니다.'
+}
+
 const openStatusModal = () => {
-  selectedStatus.value = order.value.status
-  trackingCarrier.value = order.value.shipping.carrier || ''
-  trackingNumber.value = order.value.shipping.trackingNumber || ''
+  // 변경 가능한 상태가 없으면 안내 모달 표시
+  if (!canOpenStatusModal.value) {
+    showStatusModal.value = true
+    return
+  }
+
+  // 첫 번째 옵션을 기본 선택
+  selectedStatus.value = statusOptions.value[0]?.value || ''
+  statusReason.value = ''
+  showConfirmStep.value = false // 확인 단계 초기화
+
+  // 기존 배송 정보가 있으면 미리 채워줌
+  const shipping = order.value.shipping
+  if (shipping?.trackingNumber) {
+    trackingNumber.value = shipping.trackingNumber
+    // 택배사 ID (API 응답 구조에 따라 carrierId 또는 carrier.id)
+    selectedCarrierId.value = shipping.carrierId || shipping.carrier?.id || ''
+  } else {
+    trackingNumber.value = ''
+    selectedCarrierId.value = ''
+  }
+
   showStatusModal.value = true
 }
 
-const handleStatusChange = async () => {
+// 되돌릴 수 없는 상태 변경인지 확인
+const isIrreversibleChange = computed(() => {
+  // 상품준비중, 배송중, 배송완료, 환불로 변경하는 경우 되돌릴 수 없음
+  return ['PREPARING', 'SHIPPING', 'DELIVERED', 'REFUNDED'].includes(selectedStatus.value)
+})
+
+// 변경 버튼 클릭 시
+const handleChangeClick = () => {
   if (!canChangeStatus.value) return
 
-  // 실제로는 API 호출
-  order.value.status = selectedStatus.value
-
-  // 배송중 상태로 변경 시 송장번호 저장
-  if (selectedStatus.value === 'shipping') {
-    order.value.shipping.carrier = trackingCarrier.value
-    order.value.shipping.trackingNumber = trackingNumber.value
+  // 되돌릴 수 없는 변경인 경우 확인 단계 표시
+  if (isIrreversibleChange.value) {
+    showConfirmStep.value = true
+    return
   }
 
-  showStatusModal.value = false
-
-  uiStore.showToast({
-    type: 'success',
-    message: '주문 상태가 변경되었습니다.',
-  })
+  // 되돌릴 수 있는 변경은 바로 실행
+  executeStatusChange()
 }
+
+// 확인 단계에서 뒤로 가기
+const goBackFromConfirm = () => {
+  showConfirmStep.value = false
+}
+
+// 실제 상태 변경 실행
+const executeStatusChange = async () => {
+  isChangingStatus.value = true
+
+  try {
+    const payload = {
+      orderIds: [Number(orderId.value)],
+      status: selectedStatus.value,
+      reason: statusReason.value || undefined,
+    }
+
+    // 배송중 상태로 변경 시 송장 정보 추가
+    if (isShippingSelected.value) {
+      payload.carrierId = Number(selectedCarrierId.value)
+      payload.trackingNumber = trackingNumber.value
+    }
+
+    await $api.patch('/admin/orders/statuses', payload)
+
+    showStatusModal.value = false
+
+    uiStore.showToast({
+      type: 'success',
+      message: '주문 상태가 변경되었습니다.',
+    })
+
+    // 주문 정보 새로고침
+    await fetchOrder()
+  } catch (err) {
+    console.error('Status change error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || err.message || '상태 변경에 실패했습니다.',
+    })
+  } finally {
+    isChangingStatus.value = false
+  }
+}
+
+// 초기 로드
+onMounted(() => {
+  fetchOrder()
+})
 </script>
 
 <template>
@@ -385,6 +338,12 @@ const handleStatusChange = async () => {
       <UiSpinner size="lg" />
     </div>
 
+    <!-- Error -->
+    <div v-else-if="error" class="text-center py-20">
+      <p class="text-error-600 mb-4">{{ error }}</p>
+      <UiButton variant="outline" @click="fetchOrder">다시 시도</UiButton>
+    </div>
+
     <!-- Content -->
     <template v-else-if="order">
       <!-- Order Summary Card -->
@@ -393,22 +352,22 @@ const handleStatusChange = async () => {
           <!-- Order Info -->
           <div class="flex-1">
             <div class="flex items-center gap-2 mb-1">
-              <h2 class="text-xl font-bold text-neutral-900">{{ order.orderNo }}</h2>
+              <h2 class="text-xl font-bold text-neutral-900">{{ order.orderNumber }}</h2>
               <UiBadge :variant="statusMap[order.status]?.variant || 'neutral'">
                 {{ statusMap[order.status]?.label || order.status }}
               </UiBadge>
             </div>
-            <p class="text-sm text-neutral-500">주문일시: {{ order.createdAt }}</p>
+            <p class="text-sm text-neutral-500">주문일시: {{ formatDate(order.orderedAt) }}</p>
           </div>
 
           <!-- Amount Summary -->
           <div class="flex gap-6 md:gap-8 text-center">
             <div>
-              <p class="text-2xl font-bold text-primary-600">{{ formatCurrency(order.amounts.totalAmount) }}</p>
+              <p class="text-2xl font-bold text-primary-600">{{ formatCurrency(order.summary?.grandTotal) }}</p>
               <p class="text-sm text-neutral-500">결제금액</p>
             </div>
             <div>
-              <p class="text-2xl font-bold text-neutral-900">{{ order.items.length }}건</p>
+              <p class="text-2xl font-bold text-neutral-900">{{ order.items?.length || 0 }}건</p>
               <p class="text-sm text-neutral-500">주문상품</p>
             </div>
           </div>
@@ -422,7 +381,7 @@ const handleStatusChange = async () => {
           <template #header>
             <div class="flex items-center justify-between">
               <h3 class="font-semibold text-neutral-900">주문 회원 정보</h3>
-              <UiButton variant="ghost" size="xs" @click="goToUser(order.user.id)">
+              <UiButton variant="ghost" size="xs" @click="goToUser(order.customer?.userId)">
                 상세보기
               </UiButton>
             </div>
@@ -430,7 +389,9 @@ const handleStatusChange = async () => {
           <UiDescriptionList :items="userInfoItems">
             <template #value-name="{ item }">
               {{ item.value }}
-              <UiBadge v-if="order.user.grade" variant="warning" size="sm" class="ml-2">{{ order.user.grade }}</UiBadge>
+              <UiBadge v-if="order.customer?.grade" variant="warning" size="sm" class="ml-2">
+                {{ order.customer.grade }}
+              </UiBadge>
             </template>
           </UiDescriptionList>
         </UiCard>
@@ -454,61 +415,32 @@ const handleStatusChange = async () => {
 
         <!-- 배송지 정보 -->
         <UiCard>
-          <template #header >
+          <template #header>
             <div class="flex items-center justify-between">
-            <h3 class="font-semibold text-neutral-900">배송지 정보</h3>
-            <UiButton v-if="order" variant="primary" size="lg" @click="openStatusModal">
-          배송 상태 변경
-        </UiButton>
-        </div>
+              <h3 class="font-semibold text-neutral-900">배송지 정보</h3>
+              <UiButton
+                variant="primary"
+                size="sm"
+                @click="openStatusModal"
+              >
+                상태 변경
+              </UiButton>
+            </div>
           </template>
           <UiDescriptionList :items="shippingInfoItems">
-            <template #value-address>
-              {{ order.shipping.address1 }}
-              <span v-if="order.shipping.address2" class="block">{{ order.shipping.address2 }}</span>
+            <template #value-tracking="{ item }">
+              <span class="font-mono">{{ item.value }}</span>
             </template>
-            <template #value-tracking>
-              {{ getCarrierLabel(order.shipping.carrier) }}
-              <span class="font-mono ml-1">{{ order.shipping.trackingNumber }}</span>
-            </template>
-            
           </UiDescriptionList>
-          
-
         </UiCard>
-
-        <!-- 쿠폰/적립금 정보 -->
-        <!-- <UiCard>
-          <template #header>
-            <h3 class="font-semibold text-neutral-900">할인/적립금 정보</h3>
-          </template>
-          <dl class="space-y-3">
-            <div v-if="order.discount.coupon" class="flex justify-between">
-              <dt class="text-sm text-neutral-500">쿠폰 할인</dt>
-              <dd class="text-sm">
-                <span class="text-error-600 font-medium">-{{ formatCurrency(order.discount.coupon.discountAmount) }}</span>
-                <span class="text-xs text-neutral-500 block">{{ order.discount.coupon.name }} ({{ order.discount.coupon.code }})</span>
-              </dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-sm text-neutral-500">적립금 사용</dt>
-              <dd class="text-sm">
-                <span v-if="order.discount.point.used > 0" class="text-error-600 font-medium">-{{ formatCurrency(order.discount.point.used) }}</span>
-                <span v-else class="text-neutral-400">-</span>
-              </dd>
-            </div>
-            <div class="flex justify-between pt-3 border-t border-neutral-200">
-              <dt class="text-sm text-neutral-500">적립 예정</dt>
-              <dd class="text-sm text-primary-600 font-medium">+{{ formatCurrency(order.discount.point.earned) }}</dd>
-            </div>
-          </dl>
-        </UiCard> -->
       </div>
 
       <!-- 주문 상품 목록 -->
       <UiCard class="mb-6" padding="none">
         <template #header>
-          <h3 class="font-semibold text-neutral-900 px-4 py-3 border-b border-neutral-200">주문 상품 ({{ order.items.length }}건)</h3>
+          <h3 class="font-semibold text-neutral-900 px-4 py-3 border-b border-neutral-200">
+            주문 상품 ({{ order.items?.length || 0 }}건)
+          </h3>
         </template>
 
         <!-- Desktop Table -->
@@ -524,27 +456,37 @@ const handleStatusChange = async () => {
             </thead>
             <tbody>
               <tr
-                v-for="item in order.items"
-                :key="item.id"
+                v-for="(item, index) in order.items"
+                :key="index"
                 class="border-b border-neutral-100"
               >
                 <td class="py-4 px-4">
                   <div class="flex items-center gap-3">
-                    <div class="w-16 h-16 bg-neutral-100 rounded-lg flex-shrink-0 flex items-center justify-center">
-                      <svg class="w-6 h-6 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
+                    <div class="w-16 h-16 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden">
+                      <img
+                        v-if="item.imageUrl"
+                        :src="item.imageUrl"
+                        :alt="item.productName"
+                        class="w-full h-full object-cover"
+                      >
+                      <div v-else class="w-full h-full flex items-center justify-center">
+                        <svg class="w-6 h-6 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
                     </div>
                     <div>
                       <p class="text-sm font-medium text-neutral-900">{{ item.productName }}</p>
-                      <p class="text-xs text-neutral-500">{{ item.option }}</p>
-                      <p class="text-xs text-neutral-400">{{ item.productId }}</p>
+                      <p v-if="item.variantName" class="text-xs text-neutral-500">{{ item.variantName }}</p>
+                      <p v-if="item.options?.length" class="text-xs text-neutral-500">
+                        {{ item.options.join(' / ') }}
+                      </p>
                     </div>
                   </div>
                 </td>
                 <td class="py-4 px-4 text-center text-sm text-neutral-700">{{ item.quantity }}</td>
                 <td class="py-4 px-4 text-right text-sm text-neutral-600">{{ formatCurrency(item.unitPrice) }}</td>
-                <td class="py-4 px-4 text-right text-sm font-medium text-neutral-900">{{ formatCurrency(item.totalPrice) }}</td>
+                <td class="py-4 px-4 text-right text-sm font-medium text-neutral-900">{{ formatCurrency(item.subtotal) }}</td>
               </tr>
             </tbody>
           </table>
@@ -553,22 +495,30 @@ const handleStatusChange = async () => {
         <!-- Mobile Cards -->
         <div class="md:hidden divide-y divide-neutral-100">
           <div
-            v-for="item in order.items"
-            :key="item.id"
+            v-for="(item, index) in order.items"
+            :key="index"
             class="p-4"
           >
             <div class="flex gap-3">
-              <div class="w-16 h-16 bg-neutral-100 rounded-lg flex-shrink-0 flex items-center justify-center">
-                <svg class="w-6 h-6 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
+              <div class="w-16 h-16 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden">
+                <img
+                  v-if="item.imageUrl"
+                  :src="item.imageUrl"
+                  :alt="item.productName"
+                  class="w-full h-full object-cover"
+                >
+                <div v-else class="w-full h-full flex items-center justify-center">
+                  <svg class="w-6 h-6 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
               </div>
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-neutral-900">{{ item.productName }}</p>
-                <p class="text-xs text-neutral-500">{{ item.option }}</p>
+                <p v-if="item.variantName" class="text-xs text-neutral-500">{{ item.variantName }}</p>
                 <div class="flex items-center justify-between mt-2">
                   <span class="text-sm text-neutral-600">{{ item.quantity }}개 x {{ formatCurrency(item.unitPrice) }}</span>
-                  <span class="text-sm font-semibold text-neutral-900">{{ formatCurrency(item.totalPrice) }}</span>
+                  <span class="text-sm font-semibold text-neutral-900">{{ formatCurrency(item.subtotal) }}</span>
                 </div>
               </div>
             </div>
@@ -580,47 +530,28 @@ const handleStatusChange = async () => {
           <dl class="space-y-2 max-w-xs ml-auto">
             <div class="flex justify-between text-sm">
               <dt class="text-neutral-500">상품 합계</dt>
-              <dd class="text-neutral-900">{{ formatCurrency(order.amounts.productTotal) }}</dd>
+              <dd class="text-neutral-900">{{ formatCurrency(order.summary?.subtotal) }}</dd>
+            </div>
+            <div v-if="order.summary?.discountTotal > 0" class="flex justify-between text-sm">
+              <dt class="text-neutral-500">할인</dt>
+              <dd class="text-error-600">-{{ formatCurrency(order.summary.discountTotal) }}</dd>
             </div>
             <div class="flex justify-between text-sm">
               <dt class="text-neutral-500">배송비</dt>
-              <dd class="text-neutral-900">{{ order.amounts.shippingFee === 0 ? '무료' : formatCurrency(order.amounts.shippingFee) }}</dd>
+              <dd class="text-neutral-900">
+                {{ order.summary?.shippingTotal === 0 ? '무료' : formatCurrency(order.summary?.shippingTotal) }}
+              </dd>
             </div>
-            <!-- <div v-if="order.amounts.couponDiscount > 0" class="flex justify-between text-sm">
-              <dt class="text-neutral-500">쿠폰 할인</dt>
-              <dd class="text-error-600">-{{ formatCurrency(order.amounts.couponDiscount) }}</dd>
-            </div>
-            <div v-if="order.amounts.pointUsed > 0" class="flex justify-between text-sm">
-              <dt class="text-neutral-500">적립금 사용</dt>
-              <dd class="text-error-600">-{{ formatCurrency(order.amounts.pointUsed) }}</dd>
-            </div> -->
             <div class="flex justify-between pt-2 border-t border-neutral-300">
               <dt class="text-base font-semibold text-neutral-900">결제 금액</dt>
-              <dd class="text-lg font-bold text-primary-600">{{ formatCurrency(order.amounts.totalAmount) }}</dd>
+              <dd class="text-lg font-bold text-primary-600">{{ formatCurrency(order.summary?.grandTotal) }}</dd>
             </div>
           </dl>
         </div>
       </UiCard>
 
-      <!-- 관리자 메모 히스토리 -->
-      <!-- <UiCard class="mb-6">
-        <template #header>
-          <h3 class="font-semibold text-neutral-900">관리자 메모</h3>
-        </template>
-        <DomainMemoHistory
-          :memos="memos"
-          :is-saving="isSavingMemo"
-          current-admin-id="admin001"
-          current-admin-name="김관리"
-          placeholder="주문에 대한 메모를 남겨주세요..."
-          @add="handleAddMemo"
-          @edit="handleEditMemo"
-          @delete="handleDeleteMemo"
-        />
-      </UiCard> -->
-
       <!-- 주문 이력 -->
-      <UiCard>
+      <UiCard v-if="order.history?.length">
         <template #header>
           <h3 class="font-semibold text-neutral-900">주문 이력</h3>
         </template>
@@ -640,9 +571,15 @@ const handleStatusChange = async () => {
             </div>
             <!-- 내용 -->
             <div class="flex-1 pb-2">
-              <p class="text-sm font-medium text-neutral-900">{{ history.action }}</p>
-              <p class="text-xs text-neutral-500">{{ history.date }}</p>
-              <p class="text-sm text-neutral-600 mt-1">{{ history.description }}</p>
+              <p class="text-sm font-medium text-neutral-900">
+                {{ history.fromStatus ? `${statusMap[history.fromStatus]?.label || history.fromStatus} → ` : '' }}
+                {{ statusMap[history.toStatus]?.label || history.toStatus }}
+              </p>
+              <p class="text-xs text-neutral-500">
+                {{ formatDate(history.createdAt) }}
+                <span v-if="history.createdByName"> · {{ history.createdByName }}</span>
+              </p>
+              <p v-if="history.reason" class="text-sm text-neutral-600 mt-1">{{ history.reason }}</p>
             </div>
           </li>
         </ul>
@@ -666,70 +603,168 @@ const handleStatusChange = async () => {
     <!-- Status Change Modal -->
     <UiModal
       v-model="showStatusModal"
-      title="주문 상태 변경"
+      :title="showConfirmStep ? '상태 변경 확인' : '주문 상태 변경'"
       size="sm"
     >
-      <p class="text-sm text-neutral-600 mb-4">
-        주문 <span class="font-medium text-neutral-900">{{ order?.orderNo }}</span>의 상태를 변경합니다.
-      </p>
+      <!-- 확인 단계 -->
+      <template v-if="showConfirmStep">
+        <div class="text-center py-4">
+          <!-- 경고 아이콘 -->
+          <div class="mx-auto w-12 h-12 rounded-full bg-warning-100 flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-warning-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
 
-      <div class="space-y-2">
-        <label
-          v-for="option in statusOptions"
-          :key="option.value"
-          :class="[
-            'flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors',
-            selectedStatus === option.value
-              ? 'border-primary-500 bg-primary-50'
-              : 'border-neutral-200 hover:border-neutral-300',
-          ]"
-        >
-          <input
-            v-model="selectedStatus"
-            type="radio"
-            :value="option.value"
-            class="w-4 h-4 text-primary-600 focus:ring-primary-500"
-          >
-          <span class="font-medium">{{ option.label }}</span>
-          <UiBadge :variant="statusMap[option.value]?.variant" size="sm" class="ml-auto">
-            {{ option.label }}
-          </UiBadge>
-        </label>
-      </div>
+          <h3 class="text-lg font-semibold text-neutral-900 mb-2">
+            정말 변경하시겠습니까?
+          </h3>
 
-      <!-- 배송중 선택 시 송장번호 입력 -->
-      <div v-if="isShippingSelected" class="mt-4 p-4 bg-neutral-50 rounded-lg space-y-3">
-        <p class="text-sm font-medium text-neutral-700">송장 정보 입력</p>
-        <div>
-          <label class="block text-sm text-neutral-600 mb-1">택배사 <span class="text-error-500">*</span></label>
-          <select
-            v-model="trackingCarrier"
-            class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          >
-            <option value="">택배사 선택</option>
-            <option v-for="carrier in carrierOptions" :key="carrier.value" :value="carrier.value">
-              {{ carrier.label }}
-            </option>
-          </select>
+          <p class="text-sm text-neutral-600 mb-4">
+            <span class="font-medium text-primary-600">{{ allStatusOptions.find(o => o.value === selectedStatus)?.label }}</span>
+            상태로 변경하면<br>
+            <span class="text-error-600 font-medium">이전 상태로 되돌릴 수 없습니다.</span>
+          </p>
+
+          <div class="bg-neutral-50 rounded-lg p-3 text-left">
+            <p class="text-xs text-neutral-500 mb-1">변경 후 문제가 발생하면</p>
+            <p class="text-sm text-neutral-700">별도의 <span class="font-medium">환불 처리</span>를 진행해 주세요.</p>
+          </div>
         </div>
-        <div>
-          <label class="block text-sm text-neutral-600 mb-1">송장번호 <span class="text-error-500">*</span></label>
-          <input
-            v-model="trackingNumber"
-            type="text"
-            placeholder="송장번호를 입력하세요"
-            class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          >
+      </template>
+
+      <!-- 상태 변경 불가 안내 -->
+      <template v-else-if="!canOpenStatusModal">
+        <div class="text-center py-4">
+          <!-- 안내 아이콘 -->
+          <div class="mx-auto w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+
+          <h3 class="text-lg font-semibold text-neutral-900 mb-2">
+            상태 변경 불가
+          </h3>
+
+          <p class="text-sm text-neutral-600 whitespace-pre-line">
+            {{ getStatusChangeBlockedMessage() }}
+          </p>
         </div>
-        <p v-if="!trackingCarrier || !trackingNumber.trim()" class="text-xs text-error-500">
-          배송중 상태로 변경하려면 택배사와 송장번호를 입력해야 합니다.
+      </template>
+
+      <!-- 상태 선택 단계 -->
+      <template v-else>
+        <p class="text-sm text-neutral-600 mb-4">
+          주문 <span class="font-medium text-neutral-900">{{ order?.orderNumber }}</span>의 상태를 변경합니다.
         </p>
-      </div>
+
+        <div class="space-y-2">
+          <label
+            v-for="option in statusOptions"
+            :key="option.value"
+            :class="[
+              'flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors',
+              selectedStatus === option.value
+                ? 'border-primary-500 bg-primary-50'
+                : 'border-neutral-200 hover:border-neutral-300',
+            ]"
+          >
+            <input
+              v-model="selectedStatus"
+              type="radio"
+              :value="option.value"
+              class="w-4 h-4 text-primary-600 focus:ring-primary-500"
+            >
+            <span class="font-medium">{{ option.label }}</span>
+            <UiBadge :variant="statusMap[option.value]?.variant" size="sm" class="ml-auto">
+              {{ option.label }}
+            </UiBadge>
+          </label>
+        </div>
+
+        <!-- 되돌릴 수 없는 상태 변경 경고 -->
+        <div v-if="isIrreversibleChange" class="mt-3 p-3 bg-warning-50 border border-warning-200 rounded-lg">
+          <p class="text-sm text-warning-700">
+            <span class="font-medium">주의:</span> 이 상태로 변경하면 이전 상태로 되돌릴 수 없습니다.
+          </p>
+        </div>
+
+        <!-- 배송중 선택 시 송장번호 입력 -->
+        <div v-if="isShippingSelected" class="mt-4 p-4 bg-neutral-50 rounded-lg space-y-3">
+          <p class="text-sm font-medium text-neutral-700">송장 정보 입력</p>
+          <div>
+            <label class="block text-sm text-neutral-600 mb-1">택배사 <span class="text-error-500">*</span></label>
+            <select
+              v-model="selectedCarrierId"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="">택배사 선택</option>
+              <option v-for="carrier in carriers" :key="carrier.id" :value="carrier.id">
+                {{ carrier.name }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm text-neutral-600 mb-1">송장번호 <span class="text-error-500">*</span></label>
+            <input
+              v-model="trackingNumber"
+              type="text"
+              placeholder="송장번호를 입력하세요"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            >
+          </div>
+          <p v-if="!selectedCarrierId || !trackingNumber.trim()" class="text-xs text-error-500">
+            배송중 상태로 변경하려면 택배사와 송장번호를 입력해야 합니다.
+          </p>
+        </div>
+
+        <!-- 변경 사유 -->
+        <div class="mt-4">
+          <label class="block text-sm text-neutral-600 mb-1">변경 사유</label>
+          <input
+            v-model="statusReason"
+            type="text"
+            placeholder="변경 사유를 입력하세요 (선택)"
+            class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          >
+        </div>
+      </template>
 
       <template #footer>
-        <div class="flex justify-end gap-2">
+        <!-- 확인 단계 버튼 -->
+        <div v-if="showConfirmStep" class="flex justify-end gap-2">
           <UiButton
             variant="outline"
+            :disabled="isChangingStatus"
+            @click="goBackFromConfirm"
+          >
+            뒤로
+          </UiButton>
+          <UiButton
+            variant="error"
+            :loading="isChangingStatus"
+            @click="executeStatusChange"
+          >
+            변경 확정
+          </UiButton>
+        </div>
+
+        <!-- 상태 변경 불가 시 닫기 버튼 -->
+        <div v-else-if="!canOpenStatusModal" class="flex justify-end">
+          <UiButton
+            variant="outline"
+            @click="showStatusModal = false"
+          >
+            닫기
+          </UiButton>
+        </div>
+
+        <!-- 상태 선택 단계 버튼 -->
+        <div v-else class="flex justify-end gap-2">
+          <UiButton
+            variant="outline"
+            :disabled="isChangingStatus"
             @click="showStatusModal = false"
           >
             취소
@@ -737,7 +772,8 @@ const handleStatusChange = async () => {
           <UiButton
             variant="primary"
             :disabled="!canChangeStatus"
-            @click="handleStatusChange"
+            :loading="isChangingStatus"
+            @click="handleChangeClick"
           >
             변경
           </UiButton>

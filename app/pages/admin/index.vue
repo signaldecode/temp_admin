@@ -4,146 +4,117 @@
  * 관리자 대시보드 메인 페이지
  */
 import { useAuthStore } from '~/stores/auth'
-import { useTenantStore } from '~/stores/tenant'
+import { formatCurrency, formatDate } from '~/utils/formatters'
 
 const authStore = useAuthStore()
-const tenantStore = useTenantStore()
+const { $api } = useNuxtApp()
+
+// 로딩 & 에러 상태
+const isLoading = ref(true)
+const error = ref(null)
 
 // 주문 현황 데이터
 const orderStats = ref([
-  {
-    id: 'new',
-    label: '신규주문',
-    value: 12,
-    color: 'primary',
-    to: '/admin/orders?status=new',
-  },
-  {
-    id: 'ready',
-    label: '배송준비',
-    value: 28,
-    color: 'warning',
-    to: '/admin/orders?status=ready',
-  },
-  {
-    id: 'shipping',
-    label: '배송중',
-    value: 45,
-    color: 'info',
-    to: '/admin/orders?status=shipping',
-  },
-  {
-    id: 'delivered',
-    label: '배송완료',
-    value: 156,
-    color: 'success',
-    to: '/admin/orders?status=delivered',
-  },
+  { id: 'new', label: '신규주문', value: 0, color: 'primary', to: '/admin/orders?status=PENDING' },
+  { id: 'ready', label: '배송준비', value: 0, color: 'warning', to: '/admin/orders?status=PREPARING' },
+  { id: 'shipping', label: '배송중', value: 0, color: 'info', to: '/admin/orders?status=SHIPPING' },
+  { id: 'delivered', label: '배송완료', value: 0, color: 'success', to: '/admin/orders?status=DELIVERED' },
 ])
 
 // 매출 현황 데이터
 const salesStats = ref([
-  {
-    id: 'today',
-    label: '오늘 매출',
-    value: 3240000,
-    change: '+12%',
-    changeType: 'positive',
-  },
-  {
-    id: 'week',
-    label: '일주일 매출',
-    value: 18750000,
-    change: '+8%',
-    changeType: 'positive',
-  },
-  {
-    id: 'month',
-    label: '이번달 매출',
-    value: 67320000,
-    change: '-3%',
-    changeType: 'negative',
-  },
+  { id: 'today', label: '오늘 매출', value: 0, change: '0%', changeType: 'positive' },
+  { id: 'week', label: '이번주 매출', value: 0, change: '0%', changeType: 'positive' },
+  { id: 'month', label: '이번달 매출', value: 0, change: '0%', changeType: 'positive' },
 ])
 
 // 교환/반품/취소 현황
 const claimStats = ref([
-  {
-    id: 'cancel',
-    label: '취소요청',
-    value: 5,
-    color: 'error',
-    to: '/admin/orders/claims?type=cancel',
-  },
-  {
-    id: 'return',
-    label: '반품요청',
-    value: 3,
-    color: 'warning',
-    to: '/admin/orders/claims?type=return',
-  },
-  {
-    id: 'exchange',
-    label: '교환요청',
-    value: 2,
-    color: 'info',
-    to: '/admin/orders/claims?type=exchange',
-  },
+  { id: 'cancel', label: '취소', value: 0, color: 'error', to: '/admin/orders/claims?claimType=CANCEL' },
+  { id: 'refund', label: '환불', value: 0, color: 'warning', to: '/admin/orders/claims?claimType=RETURN' },
+  { id: 'exchange', label: '교환', value: 0, color: 'info', to: '/admin/orders/claims?claimType=EXCHANGE' },
 ])
 
-// 최근 주문 (미리보기)
-const recentOrders = ref([
-  { id: '1001', customer: '김철수', amount: 89000, status: 'new', date: '2025-01-06 14:30' },
-  { id: '1002', customer: '이영희', amount: 145000, status: 'ready', date: '2025-01-06 14:15' },
-  { id: '1003', customer: '박민수', amount: 52000, status: 'shipping', date: '2025-01-06 13:45' },
-  { id: '1004', customer: '정수진', amount: 210000, status: 'delivered', date: '2025-01-06 12:30' },
-  { id: '1005', customer: '최동욱', amount: 78000, status: 'new', date: '2025-01-06 11:20' },
-])
+// 최근 주문
+const recentOrders = ref([])
 
 // 주문 상태 뱃지 매핑
 const statusMap = {
-  new: { label: '신규', variant: 'primary' },
-  ready: { label: '배송준비', variant: 'warning' },
-  shipping: { label: '배송중', variant: 'info' },
-  delivered: { label: '배송완료', variant: 'success' },
-  cancelled: { label: '취소', variant: 'error' },
+  PENDING: { label: '결제대기', variant: 'neutral' },
+  PAID: { label: '결제완료', variant: 'primary' },
+  PREPARING: { label: '배송준비', variant: 'warning' },
+  SHIPPING: { label: '배송중', variant: 'info' },
+  DELIVERED: { label: '배송완료', variant: 'success' },
+  CANCELLED: { label: '취소', variant: 'error' },
+  REFUNDED: { label: '환불', variant: 'error' },
 }
 
 // 색상 클래스 매핑
 const colorClasses = {
-  primary: {
-    bg: 'bg-primary-50',
-    text: 'text-primary-700',
-    border: 'border-primary-200',
-  },
-  success: {
-    bg: 'bg-success-50',
-    text: 'text-success-700',
-    border: 'border-success-200',
-  },
-  warning: {
-    bg: 'bg-warning-50',
-    text: 'text-warning-700',
-    border: 'border-warning-200',
-  },
-  error: {
-    bg: 'bg-error-50',
-    text: 'text-error-700',
-    border: 'border-error-200',
-  },
-  info: {
-    bg: 'bg-info-50',
-    text: 'text-info-700',
-    border: 'border-info-200',
-  },
+  primary: { bg: 'bg-primary-50', text: 'text-primary-700', border: 'border-primary-200' },
+  success: { bg: 'bg-success-50', text: 'text-success-700', border: 'border-success-200' },
+  warning: { bg: 'bg-warning-50', text: 'text-warning-700', border: 'border-warning-200' },
+  error: { bg: 'bg-error-50', text: 'text-error-700', border: 'border-error-200' },
+  info: { bg: 'bg-info-50', text: 'text-info-700', border: 'border-info-200' },
 }
 
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR', {
-    style: 'currency',
-    currency: 'KRW',
-  }).format(value)
+// 대시보드 데이터 불러오기
+const fetchDashboard = async () => {
+  isLoading.value = true
+  error.value = null
+
+  try {
+    const response = await $api.get('/admin/dashboard')
+    const data = response.data
+
+    // 주문 현황 매핑
+    if (data.orderStatus) {
+      orderStats.value[0].value = data.orderStatus.newOrders || 0
+      orderStats.value[1].value = data.orderStatus.preparing || 0
+      orderStats.value[2].value = data.orderStatus.shipping || 0
+      orderStats.value[3].value = data.orderStatus.completed || 0
+    }
+
+    // 매출 현황 매핑
+    if (data.sales) {
+      const mapSales = (salesData, index) => {
+        if (salesData) {
+          salesStats.value[index].value = salesData.amount || 0
+          const rate = salesData.changeRate || 0
+          salesStats.value[index].change = `${rate >= 0 ? '+' : ''}${rate.toFixed(1)}%`
+          salesStats.value[index].changeType = rate >= 0 ? 'positive' : 'negative'
+        }
+      }
+      mapSales(data.sales.today, 0)
+      mapSales(data.sales.week, 1)
+      mapSales(data.sales.month, 2)
+    }
+
+    // 클레임 현황 매핑
+    if (data.claims) {
+      claimStats.value[0].value = data.claims.cancel || 0
+      claimStats.value[1].value = data.claims.refund || 0
+      claimStats.value[2].value = data.claims.exchange || 0
+    }
+
+    // 최근 주문 매핑
+    if (data.recentOrders) {
+      recentOrders.value = data.recentOrders.map((order) => ({
+        id: order.orderId,
+        orderNumber: order.orderNumber,
+        customer: order.customerName,
+        amount: order.amount,
+        status: order.status,
+        statusLabel: order.statusLabel,
+        date: formatDate(order.createdAt),
+      }))
+    }
+  } catch (err) {
+    console.error('Dashboard fetch error:', err)
+    error.value = err.data?.message || err.message || '대시보드 데이터를 불러오는데 실패했습니다.'
+  } finally {
+    isLoading.value = false
+  }
 }
 
 // 주문번호 검색
@@ -155,10 +126,15 @@ const handleOrderSearch = () => {
   if (!keyword) return
 
   router.push({
-    path: '/admin/orders',
-    query: { keyword, type: 'orderNo' },
+    path: '/api/v1/admin/orders',
+    query: { keyword, searchType: 'ORDER_NUMBER' },
   })
 }
+
+// 마운트 시 데이터 불러오기
+onMounted(() => {
+  fetchDashboard()
+})
 </script>
 
 <template>
@@ -190,183 +166,200 @@ const handleOrderSearch = () => {
       </div>
     </div>
 
-    <!-- 주문 현황 -->
-    <section class="mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold text-neutral-900">주문 현황</h2>
-        <NuxtLink
-          to="/admin/orders"
-          class="text-sm text-primary-600 hover:text-primary-700"
-        >
-          주문목록 →
-        </NuxtLink>
-      </div>
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <NuxtLink
-          v-for="stat in orderStats"
-          :key="stat.id"
-          :to="stat.to"
-          :class="[
-            'block p-4 rounded-lg border transition-all hover:shadow-md',
-            colorClasses[stat.color].bg,
-            colorClasses[stat.color].border,
-          ]"
-        >
-          <p :class="['text-sm', colorClasses[stat.color].text]">{{ stat.label }}</p>
-          <p :class="['text-3xl font-bold mt-1', colorClasses[stat.color].text]">
-            {{ stat.value }}
-          </p>
-        </NuxtLink>
-      </div>
-    </section>
+    <!-- 로딩 -->
+    <div v-if="isLoading" class="flex items-center justify-center py-20">
+      <UiSpinner size="lg" />
+    </div>
 
-    <!-- 매출 현황 -->
-    <section class="mb-6">
-      <h2 class="text-lg font-semibold text-neutral-900 mb-3">매출 현황</h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <UiCard
-          v-for="stat in salesStats"
-          :key="stat.id"
-          padding="md"
-        >
-          <p class="text-sm text-neutral-500">{{ stat.label }}</p>
-          <p class="text-2xl font-bold text-neutral-900 mt-1">
-            {{ formatCurrency(stat.value) }}
-          </p>
-          <p
+    <!-- 에러 -->
+    <div v-else-if="error" class="text-center py-20">
+      <p class="text-error-600 mb-4">{{ error }}</p>
+      <UiButton variant="outline" @click="fetchDashboard">다시 시도</UiButton>
+    </div>
+
+    <!-- 대시보드 콘텐츠 -->
+    <template v-else>
+      <!-- 주문 현황 -->
+      <section class="mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-neutral-900">주문 현황</h2>
+          <NuxtLink
+            to="/admin/orders"
+            class="text-sm text-primary-600 hover:text-primary-700"
+          >
+            주문목록 →
+          </NuxtLink>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <NuxtLink
+            v-for="stat in orderStats"
+            :key="stat.id"
+            :to="stat.to"
             :class="[
-              'text-sm font-medium mt-1',
-              stat.changeType === 'positive' ? 'text-success-600' : 'text-error-600',
+              'block p-4 rounded-lg border transition-all hover:shadow-md',
+              colorClasses[stat.color].bg,
+              colorClasses[stat.color].border,
             ]"
           >
-            {{ stat.change }} vs 이전 기간
-          </p>
-        </UiCard>
-      </div>
-    </section>
-
-    <!-- 교환/반품/취소 현황 -->
-    <section class="mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold text-neutral-900">교환/반품/취소 관리</h2>
-        <NuxtLink
-          to="/admin/orders/claims"
-          class="text-sm text-primary-600 hover:text-primary-700"
-        >
-          전체 보기 →
-        </NuxtLink>
-      </div>
-      <div class="grid grid-cols-3 gap-3">
-        <NuxtLink
-          v-for="stat in claimStats"
-          :key="stat.id"
-          :to="stat.to"
-          :class="[
-            'block p-4 rounded-lg border transition-all hover:shadow-md text-center',
-            colorClasses[stat.color].bg,
-            colorClasses[stat.color].border,
-          ]"
-        >
-          <p :class="['text-sm', colorClasses[stat.color].text]">{{ stat.label }}</p>
-          <p :class="['text-3xl font-bold mt-1', colorClasses[stat.color].text]">
-            {{ stat.value }}
-          </p>
-        </NuxtLink>
-      </div>
-    </section>
-
-    <!-- 최근 주문 -->
-    <section>
-      <UiCard>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-neutral-900">최근 주문</h2>
-            <NuxtLink
-              to="/admin/orders"
-              class="text-sm text-primary-600 hover:text-primary-700"
-            >
-              주문목록 →
-            </NuxtLink>
-          </div>
-        </template>
-
-        <!-- Desktop Table -->
-        <div class="hidden md:block overflow-x-auto -mx-4 md:-mx-6">
-          <table class="w-full">
-            <thead>
-              <tr class="border-b border-neutral-200">
-                <th class="text-left py-3 px-4 md:px-6 text-sm font-medium text-neutral-500">주문번호</th>
-                <th class="text-left py-3 px-4 text-sm font-medium text-neutral-500">고객명</th>
-                <th class="text-right py-3 px-4 text-sm font-medium text-neutral-500">금액</th>
-                <th class="text-center py-3 px-4 text-sm font-medium text-neutral-500">상태</th>
-                <th class="text-left py-3 px-4 md:px-6 text-sm font-medium text-neutral-500">일시</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="order in recentOrders"
-                :key="order.id"
-                class="border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer"
-                @click="$router.push(`/admin/orders/${order.id}`)"
-              >
-                <td class="py-3 px-4 md:px-6 text-sm font-medium text-primary-600">#{{ order.id }}</td>
-                <td class="py-3 px-4 text-sm text-neutral-700">{{ order.customer }}</td>
-                <td class="py-3 px-4 text-sm text-neutral-900 text-right font-medium">
-                  {{ formatCurrency(order.amount) }}
-                </td>
-                <td class="py-3 px-4 text-center">
-                  <UiBadge
-                    :variant="statusMap[order.status].variant"
-                    size="sm"
-                  >
-                    {{ statusMap[order.status].label }}
-                  </UiBadge>
-                </td>
-                <td class="py-3 px-4 md:px-6 text-sm text-neutral-500">{{ order.date }}</td>
-              </tr>
-            </tbody>
-          </table>
+            <p :class="['text-sm', colorClasses[stat.color].text]">{{ stat.label }}</p>
+            <p :class="['text-3xl font-bold mt-1', colorClasses[stat.color].text]">
+              {{ stat.value }}
+            </p>
+          </NuxtLink>
         </div>
+      </section>
 
-        <!-- Mobile Cards -->
-        <div class="md:hidden space-y-3 -mx-4">
-          <div
-            v-for="order in recentOrders"
-            :key="order.id"
-            class="px-4 py-3 border-b border-neutral-100 last:border-0"
-            @click="$router.push(`/admin/orders/${order.id}`)"
+      <!-- 매출 현황 -->
+      <section class="mb-6">
+        <h2 class="text-lg font-semibold text-neutral-900 mb-3">매출 현황</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <UiCard
+            v-for="stat in salesStats"
+            :key="stat.id"
+            padding="md"
           >
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-sm font-medium text-primary-600">#{{ order.id }}</span>
-              <UiBadge
-                :variant="statusMap[order.status].variant"
-                size="sm"
-              >
-                {{ statusMap[order.status].label }}
-              </UiBadge>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-sm text-neutral-600">{{ order.customer }}</span>
-              <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(order.amount) }}</span>
-            </div>
-            <p class="text-xs text-neutral-500 mt-1">{{ order.date }}</p>
-          </div>
-        </div>
-
-        <template #footer>
-          <div class="text-center">
-            <NuxtLink
-              to="/admin/orders"
-              class="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700 font-medium"
+            <p class="text-sm text-neutral-500">{{ stat.label }}</p>
+            <p class="text-2xl font-bold text-neutral-900 mt-1">
+              {{ formatCurrency(stat.value) }}
+            </p>
+            <p
+              :class="[
+                'text-sm font-medium mt-1',
+                stat.changeType === 'positive' ? 'text-success-600' : 'text-error-600',
+              ]"
             >
-              주문 목록 전체 보기
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-              </svg>
-            </NuxtLink>
+              {{ stat.change }} vs 이전 기간
+            </p>
+          </UiCard>
+        </div>
+      </section>
+
+      <!-- 교환/반품/취소 현황 -->
+      <section class="mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-neutral-900">클레임 관리</h2>
+          <NuxtLink
+            to="/admin/orders/claims"
+            class="text-sm text-primary-600 hover:text-primary-700"
+          >
+            전체 보기 →
+          </NuxtLink>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <NuxtLink
+            v-for="stat in claimStats"
+            :key="stat.id"
+            :to="stat.to"
+            :class="[
+              'block p-4 rounded-lg border transition-all hover:shadow-md text-center',
+              colorClasses[stat.color].bg,
+              colorClasses[stat.color].border,
+            ]"
+          >
+            <p :class="['text-sm', colorClasses[stat.color].text]">{{ stat.label }}</p>
+            <p :class="['text-3xl font-bold mt-1', colorClasses[stat.color].text]">
+              {{ stat.value }}
+            </p>
+          </NuxtLink>
+        </div>
+      </section>
+
+      <!-- 최근 주문 -->
+      <section>
+        <UiCard>
+          <template #header>
+            <div class="flex items-center justify-between">
+              <h2 class="text-lg font-semibold text-neutral-900">최근 주문</h2>
+              <NuxtLink
+                to="/admin/orders"
+                class="text-sm text-primary-600 hover:text-primary-700"
+              >
+                주문목록 →
+              </NuxtLink>
+            </div>
+          </template>
+
+          <!-- Empty State -->
+          <UiEmpty v-if="recentOrders.length === 0" message="최근 주문이 없습니다." />
+
+          <!-- Desktop Table -->
+          <div v-else class="hidden md:block overflow-x-auto -mx-4 md:-mx-6">
+            <table class="w-full">
+              <thead>
+                <tr class="border-b border-neutral-200">
+                  <th class="text-left py-3 px-4 md:px-6 text-sm font-medium text-neutral-500">주문번호</th>
+                  <th class="text-left py-3 px-4 text-sm font-medium text-neutral-500">고객명</th>
+                  <th class="text-right py-3 px-4 text-sm font-medium text-neutral-500">금액</th>
+                  <th class="text-center py-3 px-4 text-sm font-medium text-neutral-500">상태</th>
+                  <th class="text-left py-3 px-4 md:px-6 text-sm font-medium text-neutral-500">일시</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="order in recentOrders"
+                  :key="order.id"
+                  class="border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer"
+                  @click="$router.push(`/admin/orders/${order.id.replace('#', '')}`)"
+                >
+                  <td class="py-3 px-4 md:px-6 text-sm font-medium text-primary-600">{{ order.id }}</td>
+                  <td class="py-3 px-4 text-sm text-neutral-700">{{ order.customer }}</td>
+                  <td class="py-3 px-4 text-sm text-neutral-900 text-right font-medium">
+                    {{ formatCurrency(order.amount) }}
+                  </td>
+                  <td class="py-3 px-4 text-center">
+                    <UiBadge
+                      :variant="statusMap[order.status]?.variant || 'neutral'"
+                      size="sm"
+                    >
+                      {{ order.statusLabel || statusMap[order.status]?.label || order.status }}
+                    </UiBadge>
+                  </td>
+                  <td class="py-3 px-4 md:px-6 text-sm text-neutral-500">{{ order.date }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        </template>
-      </UiCard>
-    </section>
+
+          <!-- Mobile Cards -->
+          <div v-if="recentOrders.length > 0" class="md:hidden space-y-3 -mx-4">
+            <div
+              v-for="order in recentOrders"
+              :key="order.id"
+              class="px-4 py-3 border-b border-neutral-100 last:border-0"
+              @click="$router.push(`/admin/orders/${order.id.replace('#', '')}`)"
+            >
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-medium text-primary-600">{{ order.id }}</span>
+                <UiBadge
+                  :variant="statusMap[order.status]?.variant || 'neutral'"
+                  size="sm"
+                >
+                  {{ order.statusLabel || statusMap[order.status]?.label || order.status }}
+                </UiBadge>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-neutral-600">{{ order.customer }}</span>
+                <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(order.amount) }}</span>
+              </div>
+              <p class="text-xs text-neutral-500 mt-1">{{ order.date }}</p>
+            </div>
+          </div>
+
+          <template v-if="recentOrders.length > 0" #footer>
+            <div class="text-center">
+              <NuxtLink
+                to="/admin/orders"
+                class="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700 font-medium"
+              >
+                주문 목록 전체 보기
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </NuxtLink>
+            </div>
+          </template>
+        </UiCard>
+      </section>
+    </template>
   </LayoutDetailPage>
 </template>

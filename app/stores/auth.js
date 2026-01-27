@@ -2,7 +2,7 @@
  * Auth Store
  * JWT HttpOnly Cookie 기반 인증 상태 관리
  * - 프론트에서 토큰에 직접 접근하지 않음
- * - 인증 상태는 /me API 응답으로 판단
+ * - 인증 상태는 /auth/me API 응답으로 판단
  */
 import { defineStore } from 'pinia'
 
@@ -60,14 +60,14 @@ export const useAuthStore = defineStore('auth', {
 
       try {
         const { $api } = useNuxtApp()
-        const response = await $api.post('/auth/login', credentials)
+        await $api.post('/auth/login', credentials)
 
         // 로그인 성공 후 유저 정보 조회
         await this.fetchUser()
 
         return { success: true }
       } catch (error) {
-        this.error = error.message || '로그인에 실패했습니다.'
+        this.error = error.data?.error?.message || error.data?.message || error.message || '로그인에 실패했습니다.'
         this.isAuthenticated = false
         return { success: false, error: this.error }
       } finally {
@@ -106,28 +106,30 @@ export const useAuthStore = defineStore('auth', {
 
       try {
         const { $api } = useNuxtApp()
-        const response = await $api.get('/me')
+        const response = await $api.get('/auth/me')
 
-        this.user = response.user
-        this.permissions = response.permissions || []
+        // API 응답: { success, data: MyInfoResponse, error, message }
+        const userData = response.data
+        this.user = userData
+        this.permissions = userData?.permissions || []
         this.isAuthenticated = true
 
         // 테넌트 스토어 초기화 (멀티테넌트 확장 대비)
         const tenantStore = useTenantStore()
-        if (response.currentTenant) {
-          tenantStore.setCurrentTenant(response.currentTenant)
+        if (userData?.currentTenant) {
+          tenantStore.setCurrentTenant(userData.currentTenant)
         }
-        if (response.user?.tenants) {
-          tenantStore.setTenants(response.user.tenants)
+        if (userData?.tenants) {
+          tenantStore.setTenants(userData.tenants)
         }
 
         return { success: true }
       } catch (error) {
         this.isAuthenticated = false
-        this.error = error.message
+        this.error = error.data?.error?.message || error.data?.message || error.message
 
         // 401인 경우 로그인 페이지로
-        if (error.status === 401) {
+        if (error.status === 401 || error.statusCode === 401) {
           return { success: false, unauthorized: true }
         }
 
@@ -149,6 +151,10 @@ export const useAuthStore = defineStore('auth', {
       // 테넌트 스토어도 초기화
       const tenantStore = useTenantStore()
       tenantStore.reset()
+
+      // 카탈로그 스토어도 초기화
+      const catalogStore = useCatalogStore()
+      catalogStore.reset()
     },
   },
 })
@@ -158,4 +164,10 @@ function useTenantStore() {
   return useNuxtApp().$pinia.state.value.tenant
     ? useNuxtApp().$pinia._s.get('tenant')
     : { setCurrentTenant: () => {}, setTenants: () => {}, reset: () => {} }
+}
+
+function useCatalogStore() {
+  return useNuxtApp().$pinia.state.value.catalog
+    ? useNuxtApp().$pinia._s.get('catalog')
+    : { reset: () => {} }
 }

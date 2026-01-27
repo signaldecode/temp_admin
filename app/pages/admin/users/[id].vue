@@ -4,96 +4,68 @@
  * - 회원 기본 정보
  * - 주문 내역
  * - 포인트/적립금 내역
- * - 메모
+ * - CS 메모
  */
 
 import { useUiStore } from '~/stores/ui'
+import { useAuthStore } from '~/stores/auth'
+import { formatCurrency } from '~/utils/formatters'
 
 const route = useRoute()
 const router = useRouter()
+const { $api } = useNuxtApp()
 const uiStore = useUiStore()
+const authStore = useAuthStore()
 
 const userId = computed(() => route.params.id)
 
 // 로딩 상태
 const isLoading = ref(true)
+const error = ref(null)
 const isSavingMemo = ref(false)
 
-// 회원 정보 (Mock 데이터)
+// 회원 정보
 const user = ref(null)
 
-// 주문 내역 (Mock 데이터)
-const orders = ref([])
+// 최근 주문 내역 (user 응답에 포함)
+const recent_orders = computed(() => user.value?.recent_orders || [])
 
-// 메모 히스토리
-const memos = ref([])
+// 현재 관리자 정보
+const currentAdmin = computed(() => ({
+  id: String(authStore.user?.id || ''),
+  name: authStore.user?.name || '관리자',
+}))
 
-// Mock 데이터 로드
-onMounted(() => {
-  // 실제로는 API 호출
-  setTimeout(() => {
-    user.value = {
-      id: userId.value,
-      userId: 'user001',
-      name: '김철수',
-      phone: '010-1234-5678',
-      email: 'kim@example.com',
-      grade: 'VIP',
-      status: 'active',
-      point: 15000,
-      createdAt: '2024-01-15',
-      lastLoginAt: '2025-01-06 14:30',
-      birthDate: '1990-05-20',
-      gender: 'male',
-      address: {
-        zipcode: '06234',
-        address1: '서울시 강남구 테헤란로 123',
-        address2: '456호',
-      },
-      stats: {
-        orderCount: 45,
-        totalSpent: 1250000,
-        avgOrderAmount: 27778,
-        cancelCount: 2,
-        returnCount: 1,
-      },
-    }
+// CS 메모 목록 (API 필드명을 컴포넌트 형식으로 변환)
+const memos = computed(() => {
+  if (!user.value?.cs_memos) return []
+  return user.value.cs_memos.map((memo) => ({
+    id: memo.id,
+    content: memo.content,
+    adminId: String(memo.created_by),
+    adminName: memo.created_by_name,
+    createdAt: memo.created_at,
+  }))
+})
 
-    orders.value = [
-      { id: '1001', date: '2025-01-05', products: '겨울 패딩 자켓 외 2건', amount: 189000, status: 'delivered' },
-      { id: '998', date: '2025-01-02', products: '니트 스웨터', amount: 59000, status: 'delivered' },
-      { id: '987', date: '2024-12-28', products: '청바지 외 1건', amount: 98000, status: 'delivered' },
-      { id: '965', date: '2024-12-20', products: '겨울 부츠', amount: 129000, status: 'delivered' },
-      { id: '943', date: '2024-12-15', products: '목도리 세트', amount: 45000, status: 'cancelled' },
-    ]
+// 데이터 로드
+const fetchUser = async () => {
+  isLoading.value = true
+  error.value = null
 
-    // 메모 히스토리 (Mock 데이터)
-    memos.value = [
-      {
-        id: 1,
-        content: 'VIP 고객, 응대 시 주의 필요',
-        adminId: 'admin001',
-        adminName: '김관리',
-        createdAt: '2025-01-06 10:30:00',
-      },
-      {
-        id: 2,
-        content: '환불 요청 시 즉시 처리 요망 (이전 CS 건 참고)',
-        adminId: 'admin002',
-        adminName: '이담당',
-        createdAt: '2025-01-05 14:20:00',
-      },
-      {
-        id: 3,
-        content: '생일 기념 쿠폰 발급 완료 (5/20)',
-        adminId: 'admin001',
-        adminName: '김관리',
-        createdAt: '2024-05-18 09:00:00',
-      },
-    ]
-
+  try {
+    const response = await $api.get(`/admin/users/${userId.value}`)
+    user.value = response.data
+  } catch (err) {
+    console.error('User fetch error:', err)
+    error.value = err.data?.message || err.message || '회원 정보를 불러오는데 실패했습니다.'
+  } finally {
     isLoading.value = false
-  }, 500)
+  }
+}
+
+onMounted(() => {
+  fetchUser()
 })
 
 // 회원 등급 뱃지
@@ -105,51 +77,51 @@ const gradeVariant = {
 
 // 회원 상태 뱃지
 const statusMap = {
-  active: { label: '활성', variant: 'success' },
-  dormant: { label: '휴면', variant: 'warning' },
-  withdrawn: { label: '탈퇴', variant: 'neutral' },
+  ACTIVE: { label: '활성', variant: 'success' },
+  INACTIVE: { label: '비활성', variant: 'warning' },
+  SUSPENDED: { label: '정지', variant: 'error' },
+  WITHDRAWN: { label: '탈퇴', variant: 'neutral' },
 }
 
 // 주문 상태 뱃지
 const orderStatusMap = {
-  new: { label: '신규', variant: 'primary' },
-  ready: { label: '배송준비', variant: 'warning' },
-  shipping: { label: '배송중', variant: 'info' },
-  delivered: { label: '배송완료', variant: 'success' },
-  cancelled: { label: '취소', variant: 'error' },
+  PENDING: { label: '결제대기', variant: 'neutral' },
+  PAID: { label: '결제완료', variant: 'primary' },
+  PREPARING: { label: '상품준비중', variant: 'warning' },
+  SHIPPING: { label: '배송중', variant: 'info' },
+  DELIVERED: { label: '배송완료', variant: 'success' },
+  CANCELLED: { label: '취소', variant: 'error' },
+  REFUNDED: { label: '환불', variant: 'error' },
 }
 
 // 성별
 const genderMap = {
-  male: '남성',
-  female: '여성',
-  other: '기타',
-}
-
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
+  MALE: '남성',
+  FEMALE: '여성',
+  OTHER: '기타',
 }
 
 // 기본 정보 아이템
 const basicInfoItems = computed(() => {
   if (!user.value) return []
   return [
-    { key: 'userId', label: '회원 ID', value: user.value.userId },
+    { key: 'userId', label: '회원 ID', value: user.value.user_id },
     { key: 'name', label: '이름', value: user.value.name },
-    { key: 'phone', label: '연락처', value: user.value.phone },
-    { key: 'email', label: '이메일', value: user.value.email },
-    { key: 'birthDate', label: '생년월일', value: user.value.birthDate || '-' },
+    { key: 'phone', label: '연락처', value: user.value.phone || '-' },
+    { key: 'email', label: '이메일', value: user.value.email || '-' },
     { key: 'gender', label: '성별', value: genderMap[user.value.gender] || '-' },
+    { key: 'lastLogin', label: '최근 로그인', value: user.value.last_login_at?.replace('T', ' ').slice(0, 16) || '-' },
   ]
 })
 
 // 배송지 정보 아이템
 const addressInfoItems = computed(() => {
-  if (!user.value) return []
+  if (!user.value?.default_address) return []
+  const addr = user.value.default_address
   return [
-    { key: 'zipcode', label: '우편번호', value: user.value.address?.zipcode || '-' },
-    { key: 'address', label: '주소', value: user.value.address?.address1 || '-' },
+    { key: 'recipient', label: '수령인', value: `${addr.recipient_name} (${addr.recipient_phone})` },
+    { key: 'zipcode', label: '우편번호', value: addr.postal_code || '-' },
+    { key: 'address', label: '주소', value: addr.address1 || '-' },
   ]
 })
 
@@ -157,62 +129,81 @@ const addressInfoItems = computed(() => {
 const handleAddMemo = async (memoData) => {
   isSavingMemo.value = true
 
-  // 실제로는 API 호출
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  try {
+    const response = await $api.post(`/admin/users/${userId.value}/cs-memos`, {
+      content: memoData.content,
+    })
 
-  const newMemo = {
-    id: Date.now(),
-    content: memoData.content,
-    adminId: memoData.adminId,
-    adminName: memoData.adminName,
-    createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    // user.cs_memos에 추가 (최신순으로 맨 앞에)
+    if (!user.value.cs_memos) {
+      user.value.cs_memos = []
+    }
+    user.value.cs_memos.unshift(response.data)
+
+    uiStore.showToast({
+      type: 'success',
+      message: '메모가 등록되었습니다.',
+    })
+  } catch (err) {
+    console.error('Memo add error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '메모 등록에 실패했습니다.',
+    })
+  } finally {
+    isSavingMemo.value = false
   }
-
-  // 최신순으로 맨 앞에 추가
-  memos.value = [newMemo, ...memos.value]
-  isSavingMemo.value = false
-
-  uiStore.showToast({
-    type: 'success',
-    message: '메모가 등록되었습니다.',
-  })
 }
 
 // 메모 수정
 const handleEditMemo = async (memoData) => {
   isSavingMemo.value = true
 
-  // 실제로는 API 호출
-  await new Promise((resolve) => setTimeout(resolve, 500))
-
-  const index = memos.value.findIndex((m) => m.id === memoData.id)
-  if (index > -1) {
-    memos.value[index] = {
-      ...memos.value[index],
+  try {
+    const response = await $api.put(`/admin/users/${userId.value}/cs-memos/${memoData.id}`, {
       content: memoData.content,
-      updatedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    })
+
+    // user.cs_memos에서 해당 메모 업데이트
+    const index = user.value.cs_memos.findIndex((m) => m.id === memoData.id)
+    if (index > -1) {
+      user.value.cs_memos[index] = response.data
     }
+
+    uiStore.showToast({
+      type: 'success',
+      message: '메모가 수정되었습니다.',
+    })
+  } catch (err) {
+    console.error('Memo edit error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '메모 수정에 실패했습니다.',
+    })
+  } finally {
+    isSavingMemo.value = false
   }
-
-  isSavingMemo.value = false
-
-  uiStore.showToast({
-    type: 'success',
-    message: '메모가 수정되었습니다.',
-  })
 }
 
 // 메모 삭제
 const handleDeleteMemo = async (memoId) => {
-  // 실제로는 API 호출
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  try {
+    await $api.delete(`/admin/users/${userId.value}/cs-memos/${memoId}`)
 
-  memos.value = memos.value.filter((m) => m.id !== memoId)
+    // user.cs_memos에서 해당 메모 제거
+    user.value.cs_memos = user.value.cs_memos.filter((m) => m.id !== memoId)
 
-  uiStore.showToast({
-    type: 'success',
-    message: '메모가 삭제되었습니다.',
-  })
+    uiStore.showToast({
+      type: 'success',
+      message: '메모가 삭제되었습니다.',
+    })
+  } catch (err) {
+    console.error('Memo delete error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '메모 삭제에 실패했습니다.',
+    })
+  }
 }
 
 // 목록으로 돌아가기
@@ -254,11 +245,14 @@ const tabs = [
     </div>
 
     <!-- Loading -->
-    <div
-      v-if="isLoading"
-      class="flex items-center justify-center py-20"
-    >
+    <div v-if="isLoading" class="flex items-center justify-center py-20">
       <UiSpinner size="lg" />
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="error" class="text-center py-20">
+      <p class="text-error-600 mb-4">{{ error }}</p>
+      <UiButton variant="outline" @click="fetchUser">다시 시도</UiButton>
     </div>
 
     <!-- Content -->
@@ -268,36 +262,36 @@ const tabs = [
         <div class="flex flex-col md:flex-row md:items-center gap-4">
           <!-- Avatar -->
           <div class="w-16 h-16 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-2xl font-bold flex-shrink-0">
-            {{ user.name.charAt(0) }}
+            {{ user.name?.charAt(0) || '?' }}
           </div>
 
           <!-- Info -->
           <div class="flex-1">
             <div class="flex items-center gap-2 mb-1">
               <h2 class="text-xl font-bold text-neutral-900">{{ user.name }}</h2>
-              <UiBadge :variant="gradeVariant[user.grade] || 'neutral'">
-                {{ user.grade }}
+              <UiBadge :variant="gradeVariant[user.grade?.name] || 'neutral'">
+                {{ user.grade?.name || '-' }}
               </UiBadge>
-              <UiBadge :variant="statusMap[user.status].variant" dot>
-                {{ statusMap[user.status].label }}
+              <UiBadge :variant="statusMap[user.status]?.variant || 'neutral'" dot>
+                {{ statusMap[user.status]?.label || user.status }}
               </UiBadge>
             </div>
-            <p class="text-sm text-neutral-600">{{ user.userId }} · {{ user.email }}</p>
-            <p class="text-sm text-neutral-500">가입일: {{ user.createdAt }} · 최근 로그인: {{ user.lastLoginAt }}</p>
+            <p class="text-sm text-neutral-600">{{ user.user_id }} · {{ user.email }}</p>
+            <p class="text-sm text-neutral-500">가입일: {{ user.created_at?.split('T')[0] }}</p>
           </div>
 
           <!-- Stats -->
           <div class="flex gap-6 md:gap-8 text-center">
             <div>
-              <p class="text-2xl font-bold text-neutral-900">{{ user.stats.orderCount }}</p>
+              <p class="text-2xl font-bold text-neutral-900">{{ user.order_statistics?.total_order_count || 0 }}</p>
               <p class="text-sm text-neutral-500">총 주문</p>
             </div>
             <div>
-              <p class="text-2xl font-bold text-primary-600">{{ formatCurrency(user.stats.totalSpent) }}</p>
+              <p class="text-2xl font-bold text-primary-600">{{ formatCurrency(user.order_statistics?.total_order_amount || 0) }}</p>
               <p class="text-sm text-neutral-500">총 주문금액</p>
             </div>
             <div>
-              <p class="text-2xl font-bold text-neutral-900">{{ formatCurrency(user.point) }}</p>
+              <p class="text-2xl font-bold text-neutral-900">{{ formatCurrency(user.current_point || 0) }}</p>
               <p class="text-sm text-neutral-500">보유 포인트</p>
             </div>
           </div>
@@ -339,53 +333,54 @@ const tabs = [
           <template #header>
             <h3 class="font-semibold text-neutral-900">기본 배송지</h3>
           </template>
-          <UiDescriptionList :items="addressInfoItems">
+          <UiDescriptionList v-if="user.default_address" :items="addressInfoItems">
             <template #value-address>
-              {{ user.address?.address1 || '-' }}
-              <span v-if="user.address?.address2" class="block">{{ user.address.address2 }}</span>
+              {{ user.default_address?.address1 || '-' }}
+              <span v-if="user.default_address?.address2" class="block text-neutral-500">{{ user.default_address.address2 }}</span>
             </template>
           </UiDescriptionList>
+          <p v-else class="text-sm text-neutral-500">등록된 배송지가 없습니다.</p>
         </UiCard>
 
         <!-- 주문 통계 -->
-        <UiCard>
+        <UiCard class="lg:col-span-2">
           <template #header>
             <h3 class="font-semibold text-neutral-900">주문 통계</h3>
           </template>
-          <dl class="space-y-3">
-            <div class="flex justify-between">
-              <dt class="text-sm text-neutral-500">총 주문수</dt>
-              <dd class="text-sm font-medium text-neutral-900">{{ user.stats.orderCount }}건</dd>
+          <dl class="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div class="text-center p-4 bg-neutral-50 rounded-lg">
+              <dd class="text-2xl font-bold text-neutral-900">{{ user.order_statistics?.total_order_count || 0 }}건</dd>
+              <dt class="text-sm text-neutral-500 mt-1">총 주문수</dt>
             </div>
-            <div class="flex justify-between">
-              <dt class="text-sm text-neutral-500">총 주문금액</dt>
-              <dd class="text-sm font-medium text-neutral-900">{{ formatCurrency(user.stats.totalSpent) }}</dd>
+            <div class="text-center p-4 bg-neutral-50 rounded-lg">
+              <dd class="text-2xl font-bold text-primary-600">{{ formatCurrency(user.order_statistics?.total_order_amount || 0) }}</dd>
+              <dt class="text-sm text-neutral-500 mt-1">총 주문금액</dt>
             </div>
-            <div class="flex justify-between">
-              <dt class="text-sm text-neutral-500">평균 주문금액</dt>
-              <dd class="text-sm font-medium text-neutral-900">{{ formatCurrency(user.stats.avgOrderAmount) }}</dd>
+            <div class="text-center p-4 bg-neutral-50 rounded-lg">
+              <dd class="text-2xl font-bold text-neutral-900">{{ formatCurrency(user.order_statistics?.average_order_amount || 0) }}</dd>
+              <dt class="text-sm text-neutral-500 mt-1">평균 주문금액</dt>
             </div>
-            <div class="flex justify-between">
-              <dt class="text-sm text-neutral-500">취소</dt>
-              <dd class="text-sm font-medium text-neutral-900">{{ user.stats.cancelCount }}건</dd>
+            <div class="text-center p-4 bg-neutral-50 rounded-lg">
+              <dd class="text-2xl font-bold text-neutral-900">{{ user.order_statistics?.cancelled_count || 0 }}건</dd>
+              <dt class="text-sm text-neutral-500 mt-1">취소</dt>
             </div>
-            <div class="flex justify-between">
-              <dt class="text-sm text-neutral-500">반품/교환</dt>
-              <dd class="text-sm font-medium text-neutral-900">{{ user.stats.returnCount }}건</dd>
+            <div class="text-center p-4 bg-neutral-50 rounded-lg">
+              <dd class="text-2xl font-bold text-neutral-900">{{ user.order_statistics?.refunded_count || 0 }}건</dd>
+              <dt class="text-sm text-neutral-500 mt-1">환불</dt>
             </div>
           </dl>
         </UiCard>
 
-        <!-- 관리자 메모 히스토리 -->
+        <!-- CS 메모 -->
         <UiCard class="lg:col-span-2">
           <template #header>
-            <h3 class="font-semibold text-neutral-900">관리자 메모</h3>
+            <h3 class="font-semibold text-neutral-900">CS 메모</h3>
           </template>
           <DomainMemoHistory
             :memos="memos"
             :is-saving="isSavingMemo"
-            current-admin-id="admin001"
-            current-admin-name="김관리"
+            :current-admin-id="currentAdmin.id"
+            :current-admin-name="currentAdmin.name"
             placeholder="회원에 대한 메모를 남겨주세요..."
             @add="handleAddMemo"
             @edit="handleEditMemo"
@@ -411,18 +406,18 @@ const tabs = [
               </thead>
               <tbody>
                 <tr
-                  v-for="order in orders"
-                  :key="order.id"
+                  v-for="order in recent_orders"
+                  :key="order.order_id"
                   class="border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer"
-                  @click="goToOrder(order.id)"
+                  @click="goToOrder(order.order_id)"
                 >
-                  <td class="py-3 px-4 text-sm font-medium text-primary-600">#{{ order.id }}</td>
-                  <td class="py-3 px-4 text-sm text-neutral-600">{{ order.date }}</td>
-                  <td class="py-3 px-4 text-sm text-neutral-900">{{ order.products }}</td>
-                  <td class="py-3 px-4 text-sm text-neutral-900 text-right font-medium">{{ formatCurrency(order.amount) }}</td>
+                  <td class="py-3 px-4 text-sm font-medium text-primary-600">{{ order.order_number }}</td>
+                  <td class="py-3 px-4 text-sm text-neutral-600">{{ order.ordered_at?.split('T')[0] }}</td>
+                  <td class="py-3 px-4 text-sm text-neutral-900">{{ order.product_summary }}</td>
+                  <td class="py-3 px-4 text-sm text-neutral-900 text-right font-medium">{{ formatCurrency(order.total_amount) }}</td>
                   <td class="py-3 px-4 text-center">
-                    <UiBadge :variant="orderStatusMap[order.status].variant" size="sm">
-                      {{ orderStatusMap[order.status].label }}
+                    <UiBadge :variant="orderStatusMap[order.status]?.variant || 'neutral'" size="sm">
+                      {{ orderStatusMap[order.status]?.label || order.status }}
                     </UiBadge>
                   </td>
                 </tr>
@@ -433,27 +428,27 @@ const tabs = [
           <!-- Mobile Cards -->
           <div class="md:hidden divide-y divide-neutral-100">
             <div
-              v-for="order in orders"
-              :key="order.id"
+              v-for="order in recent_orders"
+              :key="order.order_id"
               class="p-4 hover:bg-neutral-50 cursor-pointer"
-              @click="goToOrder(order.id)"
+              @click="goToOrder(order.order_id)"
             >
               <div class="flex items-center justify-between mb-1">
-                <span class="text-sm font-medium text-primary-600">#{{ order.id }}</span>
-                <UiBadge :variant="orderStatusMap[order.status].variant" size="sm">
-                  {{ orderStatusMap[order.status].label }}
+                <span class="text-sm font-medium text-primary-600">{{ order.order_number }}</span>
+                <UiBadge :variant="orderStatusMap[order.status]?.variant || 'neutral'" size="sm">
+                  {{ orderStatusMap[order.status]?.label || order.status }}
                 </UiBadge>
               </div>
-              <p class="text-sm text-neutral-900">{{ order.products }}</p>
+              <p class="text-sm text-neutral-900">{{ order.product_summary }}</p>
               <div class="flex items-center justify-between mt-1">
-                <span class="text-xs text-neutral-500">{{ order.date }}</span>
-                <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(order.amount) }}</span>
+                <span class="text-xs text-neutral-500">{{ order.ordered_at?.split('T')[0] }}</span>
+                <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(order.total_amount) }}</span>
               </div>
             </div>
           </div>
 
           <UiEmpty
-            v-if="orders.length === 0"
+            v-if="recent_orders.length === 0"
             title="주문 내역이 없습니다"
           />
         </UiCard>
@@ -463,7 +458,7 @@ const tabs = [
       <div v-if="activeTab === 'point'">
         <UiCard>
           <div class="text-center py-8">
-            <p class="text-3xl font-bold text-primary-600 mb-2">{{ formatCurrency(user.point) }}</p>
+            <p class="text-3xl font-bold text-primary-600 mb-2">{{ formatCurrency(user.current_point || 0) }}</p>
             <p class="text-neutral-600">현재 보유 포인트</p>
           </div>
           <div class="border-t border-neutral-200 pt-4">

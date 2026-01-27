@@ -1,94 +1,78 @@
 <script setup>
 /**
  * 기본 설정 페이지
- * - 쇼핑몰 정보 (푸터 정보 포함)
- * - 정산 정보
- * - 운영 상태
- * - SEO 설정
- * - 소셜 미디어
- * - 알림 설정
- * - 보안 설정
+ * - GET /admin/tenant : 전체 설정 조회
+ * - PUT /admin/tenant : 전체 설정 수정 (multipart/form-data)
  */
 
 import { useUiStore } from '~/stores/ui'
 
+const { $api } = useNuxtApp()
 const uiStore = useUiStore()
 
 // 탭 정의
 const tabs = [
-  { id: 'shop', label: '쇼핑몰 정보' },
+  { id: 'info', label: '쇼핑몰 정보' },
   { id: 'settlement', label: '정산 정보' },
-  { id: 'operation', label: '운영 상태' },
+  { id: 'maintenance', label: '운영 상태' },
   { id: 'seo', label: 'SEO 설정' },
   { id: 'social', label: '소셜 미디어' },
   { id: 'notification', label: '알림 설정' },
   { id: 'security', label: '보안 설정' },
 ]
 
-const activeTab = ref('shop')
+const activeTab = ref('info')
 
 // 로딩/저장 상태
 const isLoading = ref(true)
 const isSaving = ref(false)
 
-// 쇼핑몰 정보 (푸터 정보 포함)
-const shopInfo = ref({
-  // 기본 정보
-  shopName: '',
-  shopNameEn: '',
+// 쇼핑몰 정보
+const info = ref({
+  id: null,
+  code: '',
+  name: '',
+  nameEn: '',
   logoUrl: '',
   faviconUrl: '',
-  shopUrl: '',
-
-  // 사업자 정보
   businessName: '',
   businessNumber: '',
-  businessType: '',
+  businessType: 'INDIVIDUAL',
   businessCategory: '',
-  mailOrderNumber: '',
-
-  // 대표자 정보
+  ecommerceLicense: '',
   ceoName: '',
-  ceoPhone: '',
-  ceoEmail: '',
-
-  // 사업장 주소
-  zipcode: '',
-  address1: '',
-  address2: '',
-
-  // 고객센터 정보
+  phone: '',
+  email: '',
+  zipCode: '',
+  address: '',
+  addressDetail: '',
   csPhone: '',
   csFax: '',
   csEmail: '',
   csHours: '',
-
-  // 개인정보 관리
-  privacyManager: '',
+  privacyOfficer: '',
   privacyEmail: '',
-
-  // 저작권
-  copyright: '',
+  copyrightText: '',
+  isActive: true,
 })
 
 // 정산 정보
-const settlementInfo = ref({
+const settlement = ref({
   bankName: '',
   bankAccount: '',
   bankHolder: '',
 })
 
-// 운영 상태
-const operationInfo = ref({
-  isOpen: true,
-  maintenanceMode: false,
-  maintenanceMessage: '',
-  maintenanceStart: '',
-  maintenanceEnd: '',
+// 운영 상태 (점검 모드)
+const maintenance = ref({
+  enabled: false,
+  message: '',
+  startAt: '',
+  endAt: '',
 })
 
 // SEO 설정
-const seoInfo = ref({
+const seo = ref({
   metaTitle: '',
   metaDescription: '',
   metaKeywords: '',
@@ -97,134 +81,205 @@ const seoInfo = ref({
 })
 
 // 소셜 미디어
-const socialInfo = ref({
+const social = ref({
   instagram: '',
   facebook: '',
   youtube: '',
   blog: '',
-  kakaoChannel: '',
+  kakao: '',
 })
 
 // 알림 설정
-const notificationInfo = ref({
+const notification = ref({
   orderEmail: '',
   claimEmail: '',
   inquiryEmail: '',
-  enableOrderNotification: true,
-  enableClaimNotification: true,
-  enableInquiryNotification: true,
+  orderEnabled: true,
+  claimEnabled: true,
+  inquiryEnabled: true,
 })
 
 // 보안 설정
-const securityInfo = ref({
+const security = ref({
   sessionTimeout: 30,
   maxLoginAttempts: 5,
-  lockoutDuration: 30,
-  requirePasswordChange: false,
-  passwordChangeDays: 90,
-  enableTwoFactor: false,
+  accountLockDuration: 30,
+  passwordChangeRequired: false,
+  passwordChangeCycle: 90,
 })
 
-// Mock 데이터 로드
-onMounted(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 500))
+// 이미지 파일 (업로드용)
+const logoFile = ref(null)
+const faviconFile = ref(null)
+const ogImageFile = ref(null)
 
-  shopInfo.value = {
-    shopName: '테스트 쇼핑몰',
-    shopNameEn: 'Test Shop',
-    logoUrl: '/images/logo.png',
-    faviconUrl: '/favicon.ico',
-    shopUrl: 'https://shop.example.com',
+// 파일 input refs
+const logoInputRef = ref(null)
+const faviconInputRef = ref(null)
+const ogImageInputRef = ref(null)
 
-    businessName: '(주)테스트컴퍼니',
-    businessNumber: '123-45-67890',
-    businessType: '법인',
-    businessCategory: '전자상거래 / 의류도소매',
-    mailOrderNumber: '제2024-서울강남-12345호',
+// 이미지 미리보기
+const logoPreview = computed(() => logoFile.value ? URL.createObjectURL(logoFile.value) : info.value.logoUrl)
+const faviconPreview = computed(() => faviconFile.value ? URL.createObjectURL(faviconFile.value) : info.value.faviconUrl)
+const ogImagePreview = computed(() => ogImageFile.value ? URL.createObjectURL(ogImageFile.value) : seo.value.ogImage)
 
-    ceoName: '홍길동',
-    ceoPhone: '010-1234-5678',
-    ceoEmail: 'ceo@example.com',
+// 이미지 업로드 핸들러
+const handleLogoUpload = (event) => {
+  const file = event.target.files?.[0]
+  if (file) logoFile.value = file
+}
 
-    zipcode: '06234',
-    address1: '서울시 강남구 테헤란로 123',
-    address2: '테스트빌딩 10층',
+const handleFaviconUpload = (event) => {
+  const file = event.target.files?.[0]
+  if (file) faviconFile.value = file
+}
 
-    csPhone: '1588-1234',
-    csFax: '02-1234-5679',
-    csEmail: 'cs@example.com',
-    csHours: '평일 09:00 ~ 18:00 (점심시간 12:00 ~ 13:00)',
+const handleOgImageUpload = (event) => {
+  const file = event.target.files?.[0]
+  if (file) ogImageFile.value = file
+}
 
-    privacyManager: '김보안',
-    privacyEmail: 'privacy@example.com',
+// 설정 데이터 로드
+const fetchSettings = async () => {
+  isLoading.value = true
 
-    copyright: '© 2025 테스트컴퍼니. All rights reserved.',
+  try {
+    const response = await $api.get('/admin/tenant')
+    const data = response.data || response
+
+    // 각 섹션 데이터 매핑
+    if (data.info) {
+      info.value = { ...info.value, ...data.info }
+    }
+    if (data.settlement) {
+      settlement.value = { ...settlement.value, ...data.settlement }
+    }
+    if (data.maintenance) {
+      maintenance.value = { ...maintenance.value, ...data.maintenance }
+    }
+    if (data.seo) {
+      seo.value = { ...seo.value, ...data.seo }
+    }
+    if (data.social) {
+      social.value = { ...social.value, ...data.social }
+    }
+    if (data.notification) {
+      notification.value = { ...notification.value, ...data.notification }
+    }
+    if (data.security) {
+      security.value = { ...security.value, ...data.security }
+    }
+  } catch (error) {
+    console.error('설정 로드 실패:', error)
+    uiStore.showToast({ type: 'error', message: '설정을 불러오지 못했습니다.' })
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 필수 필드 검증
+const validateRequired = () => {
+  const errors = []
+
+  if (!info.value.name?.trim()) {
+    errors.push('쇼핑몰 이름(한글)')
+  }
+  if (!info.value.businessName?.trim()) {
+    errors.push('상호명')
+  }
+  if (!info.value.businessNumber?.trim()) {
+    errors.push('사업자등록번호')
+  }
+  if (!info.value.ceoName?.trim()) {
+    errors.push('대표자명')
+  }
+  if (!info.value.csPhone?.trim()) {
+    errors.push('고객센터 전화번호')
   }
 
-  settlementInfo.value = {
-    bankName: '신한은행',
-    bankAccount: '110-123-456789',
-    bankHolder: '(주)테스트컴퍼니',
-  }
-
-  operationInfo.value = {
-    isOpen: true,
-    maintenanceMode: false,
-    maintenanceMessage: '시스템 점검 중입니다. 잠시 후 다시 이용해 주세요.',
-    maintenanceStart: '',
-    maintenanceEnd: '',
-  }
-
-  seoInfo.value = {
-    metaTitle: '테스트 쇼핑몰 - 최고의 쇼핑 경험',
-    metaDescription: '다양한 상품을 합리적인 가격에 만나보세요.',
-    metaKeywords: '쇼핑몰, 온라인쇼핑, 패션, 의류',
-    ogImage: '/images/og-image.png',
-    robotsTxt: 'User-agent: *\nAllow: /',
-  }
-
-  socialInfo.value = {
-    instagram: 'https://instagram.com/testshop',
-    facebook: 'https://facebook.com/testshop',
-    youtube: '',
-    blog: 'https://blog.naver.com/testshop',
-    kakaoChannel: '',
-  }
-
-  notificationInfo.value = {
-    orderEmail: 'order@example.com',
-    claimEmail: 'claim@example.com',
-    inquiryEmail: 'cs@example.com',
-    enableOrderNotification: true,
-    enableClaimNotification: true,
-    enableInquiryNotification: true,
-  }
-
-  securityInfo.value = {
-    sessionTimeout: 30,
-    maxLoginAttempts: 5,
-    lockoutDuration: 30,
-    requirePasswordChange: false,
-    passwordChangeDays: 90,
-    enableTwoFactor: false,
-  }
-
-  isLoading.value = false
-})
+  return errors
+}
 
 // 저장
 const handleSave = async () => {
+  // 필수 필드 검증
+  const errors = validateRequired()
+  if (errors.length > 0) {
+    uiStore.showToast({
+      type: 'error',
+      message: `필수 항목을 입력해주세요: ${errors.join(', ')}`,
+    })
+    return
+  }
+
   isSaving.value = true
 
-  // 실제로는 API 호출
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  try {
+    const formData = new FormData()
 
-  isSaving.value = false
+    // JSON 데이터
+    const jsonData = {
+      info: {
+        name: info.value.name,
+        nameEn: info.value.nameEn,
+        businessName: info.value.businessName,
+        businessNumber: info.value.businessNumber,
+        businessType: info.value.businessType,
+        businessCategory: info.value.businessCategory,
+        ecommerceLicense: info.value.ecommerceLicense,
+        ceoName: info.value.ceoName,
+        phone: info.value.phone,
+        email: info.value.email,
+        zipCode: info.value.zipCode,
+        address: info.value.address,
+        addressDetail: info.value.addressDetail,
+        csPhone: info.value.csPhone,
+        csFax: info.value.csFax,
+        csEmail: info.value.csEmail,
+        csHours: info.value.csHours,
+        privacyOfficer: info.value.privacyOfficer,
+        privacyEmail: info.value.privacyEmail,
+        copyrightText: info.value.copyrightText,
+        isActive: info.value.isActive,
+      },
+      seo: seo.value,
+      settlement: settlement.value,
+      maintenance: maintenance.value,
+      social: social.value,
+      notification: notification.value,
+      security: security.value,
+    }
 
-  uiStore.showToast({
-    type: 'success',
-    message: '설정이 저장되었습니다.',
-  })
+    formData.append('data', JSON.stringify(jsonData))
+
+    // 이미지 파일 추가
+    if (logoFile.value) {
+      formData.append('logo', logoFile.value)
+    }
+    if (faviconFile.value) {
+      formData.append('favicon', faviconFile.value)
+    }
+    if (ogImageFile.value) {
+      formData.append('ogImage', ogImageFile.value)
+    }
+
+    await $api.putFormData('/admin/tenant', formData)
+
+    // 파일 상태 초기화
+    logoFile.value = null
+    faviconFile.value = null
+    ogImageFile.value = null
+
+    uiStore.showToast({ type: 'success', message: '설정이 저장되었습니다.' })
+  } catch (error) {
+    console.error('설정 저장 실패:', error)
+    uiStore.showToast({
+      type: 'error',
+      message: error.data?.message || '저장에 실패했습니다.',
+    })
+  } finally {
+    isSaving.value = false
+  }
 }
 
 // 세션 타임아웃 옵션
@@ -237,7 +292,7 @@ const sessionTimeoutOptions = [
 ]
 
 // 비밀번호 변경 주기 옵션
-const passwordChangeDaysOptions = [
+const passwordChangeCycleOptions = [
   { value: 30, label: '30일' },
   { value: 60, label: '60일' },
   { value: 90, label: '90일' },
@@ -255,6 +310,32 @@ const bankOptions = [
   '카카오뱅크',
   '토스뱅크',
 ]
+
+// 사업자 구분 옵션
+const businessTypeOptions = [
+  { value: 'INDIVIDUAL', label: '개인' },
+  { value: 'CORPORATE', label: '법인' },
+]
+
+// 주소 검색 (Daum 우편번호 서비스)
+const openAddressSearch = () => {
+  if (!window.daum?.Postcode) {
+    uiStore.showToast({ type: 'error', message: '주소 검색 서비스를 불러오는 중입니다. 잠시 후 다시 시도해주세요.' })
+    return
+  }
+
+  new window.daum.Postcode({
+    oncomplete: (data) => {
+      info.value.zipCode = data.zonecode
+      info.value.address = data.roadAddress || data.jibunAddress
+    },
+  }).open()
+}
+
+// 초기 로드
+onMounted(() => {
+  fetchSettings()
+})
 </script>
 
 <template>
@@ -292,8 +373,8 @@ const bankOptions = [
 
     <!-- Content -->
     <div v-else class="space-y-6">
-      <!-- 쇼핑몰 정보 탭 (푸터 정보 포함) -->
-      <template v-if="activeTab === 'shop'">
+      <!-- 쇼핑몰 정보 탭 -->
+      <template v-if="activeTab === 'info'">
         <!-- 기본 정보 -->
         <UiCard>
           <template #header>
@@ -305,7 +386,7 @@ const bankOptions = [
                 쇼핑몰 이름 (한글) <span class="text-error-500">*</span>
               </label>
               <input
-                v-model="shopInfo.shopName"
+                v-model="info.name"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="쇼핑몰 이름"
@@ -316,21 +397,10 @@ const bankOptions = [
                 쇼핑몰 이름 (영문)
               </label>
               <input
-                v-model="shopInfo.shopNameEn"
+                v-model="info.nameEn"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="Shop Name"
-              >
-            </div>
-            <div class="md:col-span-2">
-              <label class="block text-sm font-medium text-neutral-700 mb-1">
-                쇼핑몰 URL
-              </label>
-              <input
-                v-model="shopInfo.shopUrl"
-                type="url"
-                class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="https://shop.example.com"
               >
             </div>
           </div>
@@ -347,10 +417,11 @@ const bankOptions = [
                 로고 이미지
               </label>
               <div class="border-2 border-dashed border-neutral-300 rounded-lg p-6 text-center">
-                <div v-if="shopInfo.logoUrl" class="mb-3">
-                  <img :src="shopInfo.logoUrl" alt="로고" class="h-12 mx-auto">
+                <div v-if="logoPreview" class="mb-3">
+                  <img :src="logoPreview" alt="로고" class="h-12 mx-auto">
                 </div>
-                <UiButton variant="outline" size="sm">이미지 업로드</UiButton>
+                <UiButton variant="outline" size="sm" @click="logoInputRef?.click()">이미지 업로드</UiButton>
+                <input ref="logoInputRef" type="file" accept="image/*" class="hidden" @change="handleLogoUpload">
                 <p class="text-xs text-neutral-500 mt-2">권장: 200x60px, PNG/SVG</p>
               </div>
             </div>
@@ -359,10 +430,11 @@ const bankOptions = [
                 파비콘
               </label>
               <div class="border-2 border-dashed border-neutral-300 rounded-lg p-6 text-center">
-                <div v-if="shopInfo.faviconUrl" class="mb-3">
-                  <img :src="shopInfo.faviconUrl" alt="파비콘" class="h-8 w-8 mx-auto">
+                <div v-if="faviconPreview" class="mb-3">
+                  <img :src="faviconPreview" alt="파비콘" class="h-8 w-8 mx-auto">
                 </div>
-                <UiButton variant="outline" size="sm">이미지 업로드</UiButton>
+                <UiButton variant="outline" size="sm" @click="faviconInputRef?.click()">이미지 업로드</UiButton>
+                <input ref="faviconInputRef" type="file" accept="image/*" class="hidden" @change="handleFaviconUpload">
                 <p class="text-xs text-neutral-500 mt-2">권장: 32x32px, ICO/PNG</p>
               </div>
             </div>
@@ -381,7 +453,7 @@ const bankOptions = [
                 상호명 <span class="text-error-500">*</span>
               </label>
               <input
-                v-model="shopInfo.businessName"
+                v-model="info.businessName"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="상호명을 입력하세요"
@@ -392,7 +464,7 @@ const bankOptions = [
                 사업자등록번호 <span class="text-error-500">*</span>
               </label>
               <input
-                v-model="shopInfo.businessNumber"
+                v-model="info.businessNumber"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="000-00-00000"
@@ -403,12 +475,12 @@ const bankOptions = [
                 사업자 구분
               </label>
               <select
-                v-model="shopInfo.businessType"
+                v-model="info.businessType"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
-                <option value="">선택하세요</option>
-                <option value="개인">개인</option>
-                <option value="법인">법인</option>
+                <option v-for="opt in businessTypeOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
               </select>
             </div>
             <div>
@@ -416,7 +488,7 @@ const bankOptions = [
                 업태/업종
               </label>
               <input
-                v-model="shopInfo.businessCategory"
+                v-model="info.businessCategory"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="업태 / 업종"
@@ -427,7 +499,7 @@ const bankOptions = [
                 통신판매업신고번호
               </label>
               <input
-                v-model="shopInfo.mailOrderNumber"
+                v-model="info.ecommerceLicense"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="제0000-지역-00000호"
@@ -447,7 +519,7 @@ const bankOptions = [
                 대표자명 <span class="text-error-500">*</span>
               </label>
               <input
-                v-model="shopInfo.ceoName"
+                v-model="info.ceoName"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="대표자명"
@@ -458,7 +530,7 @@ const bankOptions = [
                 대표 연락처
               </label>
               <input
-                v-model="shopInfo.ceoPhone"
+                v-model="info.phone"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="010-0000-0000"
@@ -469,7 +541,7 @@ const bankOptions = [
                 대표 이메일
               </label>
               <input
-                v-model="shopInfo.ceoEmail"
+                v-model="info.email"
                 type="email"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="email@example.com"
@@ -486,17 +558,17 @@ const bankOptions = [
           <div class="space-y-4">
             <div class="flex gap-2">
               <input
-                v-model="shopInfo.zipcode"
+                v-model="info.zipCode"
                 type="text"
                 class="w-32 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="우편번호"
                 readonly
               >
-              <UiButton variant="outline" size="sm">주소 검색</UiButton>
+              <UiButton variant="outline" size="sm" @click="openAddressSearch">주소 검색</UiButton>
             </div>
             <div>
               <input
-                v-model="shopInfo.address1"
+                v-model="info.address"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="기본 주소"
@@ -505,7 +577,7 @@ const bankOptions = [
             </div>
             <div>
               <input
-                v-model="shopInfo.address2"
+                v-model="info.addressDetail"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="상세 주소를 입력하세요"
@@ -525,7 +597,7 @@ const bankOptions = [
                 고객센터 전화번호 <span class="text-error-500">*</span>
               </label>
               <input
-                v-model="shopInfo.csPhone"
+                v-model="info.csPhone"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="1588-0000"
@@ -536,7 +608,7 @@ const bankOptions = [
                 팩스번호
               </label>
               <input
-                v-model="shopInfo.csFax"
+                v-model="info.csFax"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="02-0000-0000"
@@ -547,7 +619,7 @@ const bankOptions = [
                 고객센터 이메일
               </label>
               <input
-                v-model="shopInfo.csEmail"
+                v-model="info.csEmail"
                 type="email"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="cs@example.com"
@@ -558,7 +630,7 @@ const bankOptions = [
                 운영시간
               </label>
               <input
-                v-model="shopInfo.csHours"
+                v-model="info.csHours"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="평일 09:00 ~ 18:00"
@@ -578,7 +650,7 @@ const bankOptions = [
                 개인정보관리책임자
               </label>
               <input
-                v-model="shopInfo.privacyManager"
+                v-model="info.privacyOfficer"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="담당자명"
@@ -589,7 +661,7 @@ const bankOptions = [
                 개인정보 관련 이메일
               </label>
               <input
-                v-model="shopInfo.privacyEmail"
+                v-model="info.privacyEmail"
                 type="email"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="privacy@example.com"
@@ -608,7 +680,7 @@ const bankOptions = [
               푸터 저작권 문구
             </label>
             <input
-              v-model="shopInfo.copyright"
+              v-model="info.copyrightText"
               type="text"
               class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               placeholder="© 2025 회사명. All rights reserved."
@@ -631,7 +703,7 @@ const bankOptions = [
                 은행명
               </label>
               <select
-                v-model="settlementInfo.bankName"
+                v-model="settlement.bankName"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 <option value="">선택하세요</option>
@@ -645,7 +717,7 @@ const bankOptions = [
                 계좌번호
               </label>
               <input
-                v-model="settlementInfo.bankAccount"
+                v-model="settlement.bankAccount"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="계좌번호 입력"
@@ -656,7 +728,7 @@ const bankOptions = [
                 예금주
               </label>
               <input
-                v-model="settlementInfo.bankHolder"
+                v-model="settlement.bankHolder"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="예금주명"
@@ -667,7 +739,7 @@ const bankOptions = [
       </template>
 
       <!-- 운영 상태 탭 -->
-      <template v-if="activeTab === 'operation'">
+      <template v-if="activeTab === 'maintenance'">
         <UiCard>
           <template #header>
             <h3 class="font-semibold text-neutral-900">쇼핑몰 운영 상태</h3>
@@ -679,7 +751,7 @@ const bankOptions = [
                 <p class="text-sm text-neutral-500">쇼핑몰 오픈/클로즈 상태를 설정합니다.</p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
-                <input v-model="operationInfo.isOpen" type="checkbox" class="sr-only peer">
+                <input v-model="info.isActive" type="checkbox" class="sr-only peer">
                 <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500" />
               </label>
             </div>
@@ -697,18 +769,18 @@ const bankOptions = [
                 <p class="text-sm text-neutral-500">활성화 시 고객에게 점검 안내 페이지가 표시됩니다.</p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
-                <input v-model="operationInfo.maintenanceMode" type="checkbox" class="sr-only peer">
+                <input v-model="maintenance.enabled" type="checkbox" class="sr-only peer">
                 <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-warning-500" />
               </label>
             </div>
 
-            <div v-if="operationInfo.maintenanceMode" class="space-y-4 pt-2">
+            <div v-if="maintenance.enabled" class="space-y-4 pt-2">
               <div>
                 <label class="block text-sm font-medium text-neutral-700 mb-1">
                   점검 안내 메시지
                 </label>
                 <textarea
-                  v-model="operationInfo.maintenanceMessage"
+                  v-model="maintenance.message"
                   rows="3"
                   class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   placeholder="고객에게 표시될 점검 안내 메시지"
@@ -720,7 +792,7 @@ const bankOptions = [
                     점검 시작 일시
                   </label>
                   <input
-                    v-model="operationInfo.maintenanceStart"
+                    v-model="maintenance.startAt"
                     type="datetime-local"
                     class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   >
@@ -730,7 +802,7 @@ const bankOptions = [
                     점검 종료 일시
                   </label>
                   <input
-                    v-model="operationInfo.maintenanceEnd"
+                    v-model="maintenance.endAt"
                     type="datetime-local"
                     class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   >
@@ -753,31 +825,31 @@ const bankOptions = [
                 메타 타이틀
               </label>
               <input
-                v-model="seoInfo.metaTitle"
+                v-model="seo.metaTitle"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="검색 결과에 표시될 사이트 제목"
               >
-              <p class="text-xs text-neutral-500 mt-1">{{ seoInfo.metaTitle.length }}/60자 권장</p>
+              <p class="text-xs text-neutral-500 mt-1">{{ seo.metaTitle?.length || 0 }}/60자 권장</p>
             </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">
                 메타 설명
               </label>
               <textarea
-                v-model="seoInfo.metaDescription"
+                v-model="seo.metaDescription"
                 rows="2"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="검색 결과에 표시될 사이트 설명"
               />
-              <p class="text-xs text-neutral-500 mt-1">{{ seoInfo.metaDescription.length }}/160자 권장</p>
+              <p class="text-xs text-neutral-500 mt-1">{{ seo.metaDescription?.length || 0 }}/160자 권장</p>
             </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">
                 메타 키워드
               </label>
               <input
-                v-model="seoInfo.metaKeywords"
+                v-model="seo.metaKeywords"
                 type="text"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="쉼표로 구분하여 입력"
@@ -793,10 +865,11 @@ const bankOptions = [
           <div>
             <p class="text-sm text-neutral-500 mb-3">SNS 공유 시 표시되는 대표 이미지입니다.</p>
             <div class="border-2 border-dashed border-neutral-300 rounded-lg p-6 text-center">
-              <div v-if="seoInfo.ogImage" class="mb-3">
-                <img :src="seoInfo.ogImage" alt="OG 이미지" class="max-h-32 mx-auto rounded">
+              <div v-if="ogImagePreview" class="mb-3">
+                <img :src="ogImagePreview" alt="OG 이미지" class="max-h-32 mx-auto rounded">
               </div>
-              <UiButton variant="outline" size="sm">이미지 업로드</UiButton>
+              <UiButton variant="outline" size="sm" @click="ogImageInputRef?.click()">이미지 업로드</UiButton>
+              <input ref="ogImageInputRef" type="file" accept="image/*" class="hidden" @change="handleOgImageUpload">
               <p class="text-xs text-neutral-500 mt-2">권장: 1200x630px, JPG/PNG</p>
             </div>
           </div>
@@ -808,7 +881,7 @@ const bankOptions = [
           </template>
           <div>
             <textarea
-              v-model="seoInfo.robotsTxt"
+              v-model="seo.robotsTxt"
               rows="5"
               class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               placeholder="robots.txt 내용"
@@ -830,7 +903,7 @@ const bankOptions = [
                 Instagram
               </label>
               <input
-                v-model="socialInfo.instagram"
+                v-model="social.instagram"
                 type="url"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="https://instagram.com/yourshop"
@@ -841,7 +914,7 @@ const bankOptions = [
                 Facebook
               </label>
               <input
-                v-model="socialInfo.facebook"
+                v-model="social.facebook"
                 type="url"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="https://facebook.com/yourshop"
@@ -852,7 +925,7 @@ const bankOptions = [
                 YouTube
               </label>
               <input
-                v-model="socialInfo.youtube"
+                v-model="social.youtube"
                 type="url"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="https://youtube.com/@yourshop"
@@ -863,7 +936,7 @@ const bankOptions = [
                 블로그
               </label>
               <input
-                v-model="socialInfo.blog"
+                v-model="social.blog"
                 type="url"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="https://blog.naver.com/yourshop"
@@ -874,7 +947,7 @@ const bankOptions = [
                 카카오 채널
               </label>
               <input
-                v-model="socialInfo.kakaoChannel"
+                v-model="social.kakao"
                 type="url"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="https://pf.kakao.com/_xxxxx"
@@ -896,7 +969,7 @@ const bankOptions = [
                 주문 알림 수신
               </label>
               <input
-                v-model="notificationInfo.orderEmail"
+                v-model="notification.orderEmail"
                 type="email"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="order@example.com"
@@ -907,7 +980,7 @@ const bankOptions = [
                 클레임 알림 수신
               </label>
               <input
-                v-model="notificationInfo.claimEmail"
+                v-model="notification.claimEmail"
                 type="email"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="claim@example.com"
@@ -918,7 +991,7 @@ const bankOptions = [
                 문의 알림 수신
               </label>
               <input
-                v-model="notificationInfo.inquiryEmail"
+                v-model="notification.inquiryEmail"
                 type="email"
                 class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="cs@example.com"
@@ -938,7 +1011,7 @@ const bankOptions = [
                 <p class="text-sm text-neutral-500">신규 주문 발생 시 이메일 알림을 받습니다.</p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
-                <input v-model="notificationInfo.enableOrderNotification" type="checkbox" class="sr-only peer">
+                <input v-model="notification.orderEnabled" type="checkbox" class="sr-only peer">
                 <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500" />
               </label>
             </div>
@@ -948,7 +1021,7 @@ const bankOptions = [
                 <p class="text-sm text-neutral-500">취소/교환/반품 요청 시 이메일 알림을 받습니다.</p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
-                <input v-model="notificationInfo.enableClaimNotification" type="checkbox" class="sr-only peer">
+                <input v-model="notification.claimEnabled" type="checkbox" class="sr-only peer">
                 <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500" />
               </label>
             </div>
@@ -958,7 +1031,7 @@ const bankOptions = [
                 <p class="text-sm text-neutral-500">고객 문의 등록 시 이메일 알림을 받습니다.</p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
-                <input v-model="notificationInfo.enableInquiryNotification" type="checkbox" class="sr-only peer">
+                <input v-model="notification.inquiryEnabled" type="checkbox" class="sr-only peer">
                 <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500" />
               </label>
             </div>
@@ -978,7 +1051,7 @@ const bankOptions = [
                 세션 타임아웃
               </label>
               <select
-                v-model="securityInfo.sessionTimeout"
+                v-model="security.sessionTimeout"
                 class="w-full md:w-64 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 <option v-for="opt in sessionTimeoutOptions" :key="opt.value" :value="opt.value">
@@ -1001,7 +1074,7 @@ const bankOptions = [
                   최대 로그인 시도 횟수
                 </label>
                 <input
-                  v-model.number="securityInfo.maxLoginAttempts"
+                  v-model.number="security.maxLoginAttempts"
                   type="number"
                   min="1"
                   max="10"
@@ -1013,7 +1086,7 @@ const bankOptions = [
                   계정 잠금 시간 (분)
                 </label>
                 <input
-                  v-model.number="securityInfo.lockoutDuration"
+                  v-model.number="security.accountLockDuration"
                   type="number"
                   min="1"
                   max="60"
@@ -1035,20 +1108,20 @@ const bankOptions = [
                 <p class="text-sm text-neutral-500">설정된 주기마다 비밀번호 변경을 요구합니다.</p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
-                <input v-model="securityInfo.requirePasswordChange" type="checkbox" class="sr-only peer">
+                <input v-model="security.passwordChangeRequired" type="checkbox" class="sr-only peer">
                 <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500" />
               </label>
             </div>
 
-            <div v-if="securityInfo.requirePasswordChange">
+            <div v-if="security.passwordChangeRequired">
               <label class="block text-sm font-medium text-neutral-700 mb-1">
                 비밀번호 변경 주기
               </label>
               <select
-                v-model="securityInfo.passwordChangeDays"
+                v-model="security.passwordChangeCycle"
                 class="w-full md:w-64 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
-                <option v-for="opt in passwordChangeDaysOptions" :key="opt.value" :value="opt.value">
+                <option v-for="opt in passwordChangeCycleOptions" :key="opt.value" :value="opt.value">
                   {{ opt.label }}
                 </option>
               </select>

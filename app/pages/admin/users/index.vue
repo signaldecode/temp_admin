@@ -6,18 +6,34 @@
  * - 페이지네이션 (30개)
  */
 
+import { useUiStore } from '~/stores/ui'
+import { useCatalogStore } from '~/stores/catalog'
+import { useApi } from '~/composables/useApi'
+import { formatCurrency } from '~/utils/formatters'
+
 const router = useRouter()
 const route = useRoute()
+const uiStore = useUiStore()
+const catalogStore = useCatalogStore()
+const { get, patch } = useApi()
 
 // 검색 필터
 const filterGrade = ref('')
-const searchType = ref('name')
+const filterStatus = ref('')
+const searchType = ref('NAME')
 const searchKeyword = ref('')
 
 const searchOptions = [
-  { value: 'userId', label: '회원 ID' },
-  { value: 'name', label: '이름' },
-  { value: 'phone', label: '연락처' },
+  { value: 'USER_ID', label: '회원 ID' },
+  { value: 'NAME', label: '이름' },
+  { value: 'PHONE', label: '연락처' },
+]
+
+const statusOptions = [
+  { value: 'ACTIVE', label: '활성' },
+  { value: 'INACTIVE', label: '비활성' },
+  { value: 'SUSPENDED', label: '정지' },
+  { value: 'WITHDRAWN', label: '탈퇴' },
 ]
 
 // 로딩 상태
@@ -45,100 +61,70 @@ const isPartialSelected = computed(() => {
 const showGradeModal = ref(false)
 const selectedGrade = ref('')
 
-// 등급 옵션
-const gradeOptions = [
-  { value: 'VVIP', label: 'VVIP' },
-  { value: 'VIP', label: 'VIP' },
-  { value: '일반', label: '일반' },
-]
+// 등급 옵션 (catalog store에서 조회)
+const gradeOptions = computed(() =>
+  catalogStore.grades.map((g) => ({
+    value: g.grade_id,
+    label: g.name,
+  }))
+)
 
-// Mock 데이터 로드
+// 회원 목록 조회 API
 const fetchUsers = async () => {
   isLoading.value = true
 
-  // 실제로는 API 호출
-  await new Promise((resolve) => setTimeout(resolve, 300))
+  try {
+    // API 파라미터 구성
+    const params = {
+      page: currentPage.value,
+      size: perPage,
+    }
 
-  // 전체 Mock 데이터
-  const allUsers = [
-    { id: 1, userId: 'user001', name: '김철수', phone: '010-1234-5678', email: 'kim@example.com', grade: 'VIP', status: 'active', createdAt: '2024-01-15', orderCount: 45, totalSpent: 1250000 },
-    { id: 2, userId: 'user002', name: '이영희', phone: '010-2345-6789', email: 'lee@example.com', grade: '일반', status: 'active', createdAt: '2024-02-20', orderCount: 12, totalSpent: 340000 },
-    { id: 3, userId: 'user003', name: '박민수', phone: '010-3456-7890', email: 'park@example.com', grade: '일반', status: 'active', createdAt: '2024-03-10', orderCount: 8, totalSpent: 180000 },
-    { id: 4, userId: 'user004', name: '정수진', phone: '010-4567-8901', email: 'jung@example.com', grade: 'VIP', status: 'active', createdAt: '2024-03-25', orderCount: 67, totalSpent: 2890000 },
-    { id: 5, userId: 'user005', name: '최동욱', phone: '010-5678-9012', email: 'choi@example.com', grade: '일반', status: 'dormant', createdAt: '2023-11-05', orderCount: 3, totalSpent: 89000 },
-    { id: 6, userId: 'user006', name: '강미영', phone: '010-6789-0123', email: 'kang@example.com', grade: 'VVIP', status: 'active', createdAt: '2023-06-12', orderCount: 156, totalSpent: 8750000 },
-    { id: 7, userId: 'user007', name: '윤서준', phone: '010-7890-1234', email: 'yoon@example.com', grade: '일반', status: 'active', createdAt: '2024-05-08', orderCount: 5, totalSpent: 125000 },
-    { id: 8, userId: 'user008', name: '임지현', phone: '010-8901-2345', email: 'lim@example.com', grade: 'VIP', status: 'active', createdAt: '2024-01-22', orderCount: 38, totalSpent: 980000 },
-    { id: 9, userId: 'user009', name: '한승우', phone: '010-9012-3456', email: 'han@example.com', grade: '일반', status: 'withdrawn', createdAt: '2023-09-15', orderCount: 2, totalSpent: 45000 },
-    { id: 10, userId: 'user010', name: '오세영', phone: '010-0123-4567', email: 'oh@example.com', grade: '일반', status: 'active', createdAt: '2024-06-01', orderCount: 1, totalSpent: 32000 },
-    // 더미 데이터 추가 (페이지네이션 테스트용)
-    ...Array.from({ length: 85 }, (_, i) => ({
-      id: 11 + i,
-      userId: `user${String(11 + i).padStart(3, '0')}`,
-      name: `테스트 회원 ${11 + i}`,
-      phone: `010-${String(1000 + i).slice(-4)}-${String(5000 + i).slice(-4)}`,
-      email: `test${11 + i}@example.com`,
-      grade: ['일반', 'VIP', 'VVIP'][i % 3],
-      status: ['active', 'dormant'][i % 5 === 0 ? 1 : 0],
-      createdAt: '2024-01-01',
-      orderCount: Math.floor(Math.random() * 50),
-      totalSpent: Math.floor(Math.random() * 1000000),
-    })),
-  ]
+    // 필터 적용 (빈 값이 아닐 때만)
+    if (filterGrade.value) {
+      params.grade = filterGrade.value
+    }
+    if (filterStatus.value) {
+      params.status = filterStatus.value
+    }
+    if (searchKeyword.value) {
+      params.searchType = searchType.value
+      params.keyword = searchKeyword.value
+    }
 
-  // 등급 필터링
-  let filtered = allUsers
-  if (filterGrade.value) {
-    filtered = filtered.filter((user) => user.grade === filterGrade.value)
-  }
+    const response = await get('/admin/users', params)
 
-  // 검색 필터링
-  if (searchKeyword.value) {
-    const keyword = searchKeyword.value.toLowerCase()
-    filtered = filtered.filter((user) => {
-      switch (searchType.value) {
-        case 'userId':
-          return user.userId.toLowerCase().includes(keyword)
-        case 'name':
-          return user.name.toLowerCase().includes(keyword)
-        case 'phone':
-          return user.phone.replace(/-/g, '').includes(keyword.replace(/-/g, ''))
-        default:
-          return true
-      }
+    // 응답 데이터 매핑
+    users.value = response.data.content
+    totalItems.value = response.data.total_elements
+
+    // 페이지 변경 시 선택 초기화
+    selectedIds.value = []
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '회원 목록을 불러오는데 실패했습니다.',
     })
+    users.value = []
+    totalItems.value = 0
+  } finally {
+    isLoading.value = false
   }
-
-  totalItems.value = filtered.length
-
-  // 페이지네이션
-  const start = (currentPage.value - 1) * perPage
-  const end = start + perPage
-  users.value = filtered.slice(start, end)
-
-  // 페이지 변경 시 선택 초기화
-  selectedIds.value = []
-
-  isLoading.value = false
 }
 
 // 회원 등급 뱃지
 const gradeVariant = {
   VVIP: 'error',
   VIP: 'warning',
-  '일반': 'neutral',
+  일반: 'neutral',
 }
 
-// 회원 상태 뱃지
+// 회원 상태 뱃지 (API 응답값 기준)
 const statusMap = {
-  active: { label: '활성', variant: 'success' },
-  dormant: { label: '휴면', variant: 'warning' },
-  withdrawn: { label: '탈퇴', variant: 'neutral' },
-}
-
-// 금액 포맷
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('ko-KR').format(value) + '원'
+  ACTIVE: { label: '활성', variant: 'success' },
+  INACTIVE: { label: '비활성', variant: 'warning' },
+  SUSPENDED: { label: '정지', variant: 'error' },
+  WITHDRAWN: { label: '탈퇴', variant: 'neutral' },
 }
 
 // 검색 실행
@@ -150,7 +136,8 @@ const handleSearch = () => {
 // 검색 초기화
 const handleReset = () => {
   filterGrade.value = ''
-  searchType.value = 'name'
+  filterStatus.value = ''
+  searchType.value = 'NAME'
   searchKeyword.value = ''
   currentPage.value = 1
   fetchUsers()
@@ -164,21 +151,21 @@ const handlePageChange = (page) => {
 
 // 테이블 컬럼 정의
 const tableColumns = [
-  { key: 'userId', label: '회원ID' },
+  { key: 'user_id', label: '회원ID' },
   { key: 'name', label: '이름' },
   { key: 'phone', label: '연락처' },
   { key: 'email', label: '이메일' },
   { key: 'grade', label: '등급', align: 'center' },
   { key: 'status', label: '상태', align: 'center' },
-  { key: 'orderCount', label: '주문수', align: 'right' },
-  { key: 'totalSpent', label: '총 주문금액', align: 'right' },
-  { key: 'createdAt', label: '가입일' },
+  { key: 'order_count', label: '주문수', align: 'right' },
+  { key: 'total_order_amount', label: '총 주문금액', align: 'right' },
+  { key: 'created_at', label: '가입일' },
 ]
 
 // 전체 선택/해제
 const handleSelectAll = (selectAll) => {
   if (selectAll) {
-    selectedIds.value = users.value.map((u) => u.id)
+    selectedIds.value = users.value.map((u) => u.user_id)
   } else {
     selectedIds.value = []
   }
@@ -204,26 +191,31 @@ const openGradeModal = () => {
 const handleGradeChange = async () => {
   if (!selectedGrade.value) return
 
-  // 실제로는 API 호출
-  console.log('등급 변경:', selectedIds.value, '→', selectedGrade.value)
+  const count = selectedIds.value.length
 
-  // Mock: 로컬 데이터 업데이트
-  users.value = users.value.map((user) => {
-    if (selectedIds.value.includes(user.id)) {
-      return { ...user, grade: selectedGrade.value }
-    }
-    return user
-  })
+  try {
+    await patch('/admin/users/grades', {
+      userIds: selectedIds.value,
+      gradeId: selectedGrade.value,
+    })
 
-  showGradeModal.value = false
-  selectedIds.value = []
+    showGradeModal.value = false
+    selectedIds.value = []
 
-  // 성공 알림 (UI Store 사용)
-  const uiStore = useUiStore()
-  uiStore.showToast({
-    type: 'success',
-    message: `${selectedIds.value.length || '선택한'}명의 회원 등급이 변경되었습니다.`,
-  })
+    uiStore.showToast({
+      type: 'success',
+      message: `${count}명의 회원 등급이 변경되었습니다.`,
+    })
+
+    // 목록 새로고침
+    await fetchUsers()
+  } catch (err) {
+    console.error('Grade change error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '등급 변경에 실패했습니다.',
+    })
+  }
 }
 
 // 회원 상세로 이동
@@ -238,9 +230,6 @@ onMounted(() => {
   if (route.query.page) currentPage.value = parseInt(route.query.page) || 1
   fetchUsers()
 })
-
-// import
-import { useUiStore } from '~/stores/ui'
 </script>
 
 <template>
@@ -255,11 +244,21 @@ import { useUiStore } from '~/stores/ui'
       <DomainFilterCard @search="handleSearch" @reset="handleReset">
         <template #selects>
           <select
+            v-model="filterStatus"
+            class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          >
+            <option value="">상태 전체</option>
+            <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+          <select
+            v-if="gradeOptions.length > 0"
             v-model="filterGrade"
             class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           >
             <option value="">등급 전체</option>
-            <option v-for="option in gradeOptions" :key="option.value" :value="option.value">
+            <option v-for="option in gradeOptions" :key="option.value" :value="option.label">
               {{ option.label }}
             </option>
           </select>
@@ -308,15 +307,16 @@ import { useUiStore } from '~/stores/ui'
       :items="users"
       :selected-ids="selectedIds"
       selectable
+      id-key="user_id"
       empty-title="검색 결과가 없습니다"
       empty-description="다른 검색어로 다시 시도해보세요."
       @select="handleSelect"
       @select-all="handleSelectAll"
-      @row-click="(user) => goToDetail(user.id)"
+      @row-click="(user) => goToDetail(user.user_id)"
     >
       <!-- 회원ID -->
-      <template #cell-userId="{ item }">
-        <span class="text-sm font-medium text-primary-600">{{ item.userId }}</span>
+      <template #cell-user_id="{ item }">
+        <span class="text-sm font-medium text-primary-600">{{ item.user_id }}</span>
       </template>
 
       <!-- 이름 -->
@@ -336,46 +336,46 @@ import { useUiStore } from '~/stores/ui'
 
       <!-- 등급 -->
       <template #cell-grade="{ item }">
-        <UiBadge :variant="gradeVariant[item.grade] || 'neutral'" size="sm">
-          {{ item.grade }}
+        <UiBadge :variant="gradeVariant[item.grade?.name] || 'neutral'" size="sm">
+          {{ item.grade?.name || '-' }}
         </UiBadge>
       </template>
 
       <!-- 상태 -->
       <template #cell-status="{ item }">
-        <UiBadge :variant="statusMap[item.status].variant" size="sm" dot>
-          {{ statusMap[item.status].label }}
+        <UiBadge :variant="statusMap[item.status]?.variant || 'neutral'" size="sm" dot>
+          {{ statusMap[item.status]?.label || item.status }}
         </UiBadge>
       </template>
 
       <!-- 주문수 -->
-      <template #cell-orderCount="{ item }">
-        <span class="text-sm text-neutral-700">{{ item.orderCount }}건</span>
+      <template #cell-order_count="{ item }">
+        <span class="text-sm text-neutral-700">{{ item.order_count }}건</span>
       </template>
 
       <!-- 총 주문금액 -->
-      <template #cell-totalSpent="{ item }">
-        <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(item.totalSpent) }}</span>
+      <template #cell-total_order_amount="{ item }">
+        <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(item.total_order_amount) }}</span>
       </template>
 
       <!-- 가입일 -->
-      <template #cell-createdAt="{ item }">
-        <span class="text-sm text-neutral-500">{{ item.createdAt }}</span>
+      <template #cell-created_at="{ item }">
+        <span class="text-sm text-neutral-500">{{ item.created_at?.split('T')[0] }}</span>
       </template>
 
       <!-- 모바일 카드 -->
       <template #mobile-card="{ item }">
         <div class="flex items-start justify-between mb-2">
           <div>
-            <span class="text-sm font-medium text-primary-600">{{ item.userId }}</span>
+            <span class="text-sm font-medium text-primary-600">{{ item.user_id }}</span>
             <h3 class="text-base font-semibold text-neutral-900">{{ item.name }}</h3>
           </div>
           <div class="flex gap-1">
-            <UiBadge :variant="gradeVariant[item.grade] || 'neutral'" size="sm">
-              {{ item.grade }}
+            <UiBadge :variant="gradeVariant[item.grade?.name] || 'neutral'" size="sm">
+              {{ item.grade?.name || '-' }}
             </UiBadge>
-            <UiBadge :variant="statusMap[item.status].variant" size="sm">
-              {{ statusMap[item.status].label }}
+            <UiBadge :variant="statusMap[item.status]?.variant || 'neutral'" size="sm">
+              {{ statusMap[item.status]?.label || item.status }}
             </UiBadge>
           </div>
         </div>
@@ -384,8 +384,8 @@ import { useUiStore } from '~/stores/ui'
           <p>{{ item.email }}</p>
         </div>
         <div class="flex items-center justify-between mt-2 pt-2 border-t border-neutral-100">
-          <span class="text-sm text-neutral-500">주문 {{ item.orderCount }}건</span>
-          <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(item.totalSpent) }}</span>
+          <span class="text-sm text-neutral-500">주문 {{ item.order_count }}건</span>
+          <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(item.total_order_amount) }}</span>
         </div>
       </template>
 

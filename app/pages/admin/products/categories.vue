@@ -1,27 +1,34 @@
 <script setup>
 /**
  * 카테고리 관리 페이지
- * - 대분류/소분류 2단계 구조
+ * - 대분류/소분류 2단계 구조 (중첩 구조)
  * - 인라인 추가/수정
  * - 드래그앤드롭 순서 변경
- * - 모든 변경사항은 저장 버튼으로 일괄 저장
- * - Self-referencing 단일 테이블 구조
+ * - 모든 변경사항은 저장 버튼으로 일괄 동기화
+ * - API: GET /admin/categories, PUT /admin/categories/sync
  */
 
 import draggable from 'vuedraggable'
 import { useUiStore } from '~/stores/ui'
+import { useCatalogStore } from '~/stores/catalog'
 
 const uiStore = useUiStore()
+const catalogStore = useCatalogStore()
+const { get, put } = useApi()
+const { $api } = useNuxtApp()
 
 // 로딩 상태
 const isLoading = ref(true)
 const isSaving = ref(false)
 
-// 카테고리 데이터 (작업용)
+// 카테고리 데이터 (작업용 - 중첩 구조)
 const categories = ref([])
 
 // 원본 데이터 (변경 감지용, JSON 문자열로 저장)
 const originalData = ref('')
+
+// 삭제된 ID 추적
+const deletedIds = ref([])
 
 // 새 카테고리 입력값
 const newParentName = ref('')
@@ -34,49 +41,14 @@ const editingName = ref('')
 // 삭제 확인 모달
 const showDeleteModal = ref(false)
 const deleteTarget = ref(null)
-
-// 드래그 가능 대분류 목록
-const draggableParents = computed({
-  get: () => categories.value.filter((c) => !c.parentId).sort((a, b) => a.order - b.order),
-  set: (newList) => {
-    newList.forEach((item, index) => {
-      const cat = categories.value.find((c) => c.id === item.id)
-      if (cat) cat.order = index + 1
-    })
-  },
-})
-
-// 대분류 목록 (parent_id가 null인 것들)
-const parentCategories = computed(() => {
-  return categories.value
-    .filter((c) => !c.parentId)
-    .sort((a, b) => a.order - b.order)
-})
-
-// 특정 대분류의 드래그 가능 소분류 목록
-const getDraggableChildren = (parentId) => {
-  return computed({
-    get: () => categories.value.filter((c) => c.parentId === parentId).sort((a, b) => a.order - b.order),
-    set: (newList) => {
-      newList.forEach((item, index) => {
-        const cat = categories.value.find((c) => c.id === item.id)
-        if (cat) cat.order = index + 1
-      })
-    },
-  })
-}
-
-// 특정 대분류의 소분류 목록
-const getChildCategories = (parentId) => {
-  return categories.value
-    .filter((c) => c.parentId === parentId)
-    .sort((a, b) => a.order - b.order)
-}
+const deleteTargetParentId = ref(null)
 
 // 현재 데이터를 JSON 문자열로 생성 (변경 감지용)
 const getCurrentDataString = () => {
-  const sorted = [...categories.value].sort((a, b) => a.id - b.id)
-  return JSON.stringify(sorted)
+  return JSON.stringify({
+    categories: categories.value,
+    deletedIds: deletedIds.value,
+  })
 }
 
 // 변경 여부 (추가/수정/삭제/순서변경 모두 감지)
@@ -85,88 +57,115 @@ const hasChanges = computed(() => {
 })
 
 // 소분류 존재 여부
-const hasChildren = (parentId) => {
-  return categories.value.some((c) => c.parentId === parentId)
+const hasChildren = (parent) => {
+  return parent.children && parent.children.length > 0
+}
+
+// API 응답을 작업용 구조로 변환
+const transformApiResponse = (data) => {
+  return data.map((item) => ({
+    id: item.id,
+    name: item.name,
+    sortOrder: item.sortOrder,
+    children: item.children ? transformApiResponse(item.children) : [],
+  }))
+}
+
+// 작업용 구조를 API 요청 구조로 변환
+const transformForApi = (items) => {
+  return items.map((item, index) => ({
+    id: item.id,
+    name: item.name,
+    sortOrder: index,
+    children: item.children ? transformForApi(item.children) : [],
+  }))
 }
 
 // 데이터 로드
 const fetchCategories = async () => {
   isLoading.value = true
-  await new Promise((resolve) => setTimeout(resolve, 300))
 
-  // ============================================
-  // 백엔드에서 넘어오는 데이터 구조 (Flat Array)
-  // GET /api/categories 응답 예시
-  // ============================================
-  const apiResponse = [
-    // 대분류 (parent_id = null)
-    { id: 1, name: '의류', parent_id: null, order: 1, created_at: '2025-01-01T00:00:00Z' },
-    { id: 5, name: '신발', parent_id: null, order: 2, created_at: '2025-01-01T00:00:00Z' },
-    { id: 9, name: '가방', parent_id: null, order: 3, created_at: '2025-01-01T00:00:00Z' },
-    { id: 12, name: '액세서리', parent_id: null, order: 4, created_at: '2025-01-01T00:00:00Z' },
+  try {
+    const response = await get('/admin/categories')
+    const data = response.data || response
 
-    // 소분류 (parent_id = 대분류 id)
-    { id: 2, name: '상의', parent_id: 1, order: 1, created_at: '2025-01-01T00:00:00Z' },
-    { id: 3, name: '하의', parent_id: 1, order: 2, created_at: '2025-01-01T00:00:00Z' },
-    { id: 4, name: '아우터', parent_id: 1, order: 3, created_at: '2025-01-01T00:00:00Z' },
-    { id: 6, name: '운동화', parent_id: 5, order: 1, created_at: '2025-01-01T00:00:00Z' },
-    { id: 7, name: '구두', parent_id: 5, order: 2, created_at: '2025-01-01T00:00:00Z' },
-    { id: 8, name: '샌들', parent_id: 5, order: 3, created_at: '2025-01-01T00:00:00Z' },
-    { id: 10, name: '백팩', parent_id: 9, order: 1, created_at: '2025-01-01T00:00:00Z' },
-    { id: 11, name: '숄더백', parent_id: 9, order: 2, created_at: '2025-01-01T00:00:00Z' },
-    { id: 13, name: '모자', parent_id: 12, order: 1, created_at: '2025-01-01T00:00:00Z' },
-    { id: 14, name: '벨트', parent_id: 12, order: 2, created_at: '2025-01-01T00:00:00Z' },
-  ]
+    categories.value = transformApiResponse(data)
+    deletedIds.value = []
 
-  console.log('========================================')
-  console.log('📦 백엔드 API 응답 (GET /api/categories)')
-  console.log('========================================')
-  console.table(apiResponse)
-
-  console.log('\n📊 데이터 구조 요약:')
-  console.log('- 대분류 (parent_id = null):', apiResponse.filter(c => c.parent_id === null).length, '개')
-  console.log('- 소분류 (parent_id ≠ null):', apiResponse.filter(c => c.parent_id !== null).length, '개')
-  console.log('- 총:', apiResponse.length, '개')
-
-  // snake_case → camelCase 변환 (프론트엔드 컨벤션)
-  categories.value = apiResponse.map((c) => ({
-    id: c.id,
-    name: c.name,
-    parentId: c.parent_id,
-    order: c.order,
-  }))
-
-  // 원본 데이터 저장
-  originalData.value = getCurrentDataString()
-
-  isLoading.value = false
+    // 원본 데이터 저장
+    originalData.value = getCurrentDataString()
+  } catch (err) {
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || err.message || '카테고리를 불러오지 못했습니다.',
+    })
+  } finally {
+    isLoading.value = false
+  }
 }
 
 // 모든 변경사항 저장
 const saveAllChanges = async () => {
   isSaving.value = true
 
-  // API 호출 시뮬레이션
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  try {
+    const payload = {
+      categories: transformForApi(categories.value),
+      deletedIds: deletedIds.value,
+    }
 
-  // 백엔드로 보낼 데이터 구조
-  const saveData = categories.value.map((c) => ({
-    id: c.id,
-    name: c.name,
-    parent_id: c.parentId,
-    order: c.order,
-  }))
+    const response = await put('/admin/categories/sync', payload)
+    const responseData = response?.data || response
 
-  console.log('========================================')
-  console.log('📤 카테고리 저장 API 요청 (PUT /api/categories)')
-  console.log('========================================')
-  console.table(saveData)
+    // 부분 성공 처리: 삭제 실패한 카테고리가 있는 경우
+    const failedIds = responseData?.failedIds || []
+    const failedReasons = responseData?.failedReasons || {}
 
-  // 원본 데이터 업데이트
-  originalData.value = getCurrentDataString()
+    if (failedIds.length > 0) {
+      // 삭제 실패한 ID는 deletedIds에서 제거 (다음 저장 시 다시 시도하지 않도록)
+      deletedIds.value = deletedIds.value.filter((id) => !failedIds.includes(id))
 
-  isSaving.value = false
-  uiStore.showToast({ type: 'success', message: '카테고리가 저장되었습니다.' })
+      // 실패 사유별 메시지 생성
+      const reasonMessages = {
+        CATEGORY_HAS_PRODUCTS: '상품이 존재',
+        CATEGORY_HAS_CHILDREN: '하위 카테고리가 존재',
+      }
+
+      // 사유별로 그룹핑
+      const hasProducts = failedIds.filter((id) => failedReasons[id] === 'CATEGORY_HAS_PRODUCTS')
+      const hasChildren = failedIds.filter((id) => failedReasons[id] === 'CATEGORY_HAS_CHILDREN')
+
+      let message = '일부 카테고리를 삭제할 수 없습니다: '
+      const parts = []
+      if (hasProducts.length > 0) {
+        parts.push(`${hasProducts.length}개 - 상품이 존재`)
+      }
+      if (hasChildren.length > 0) {
+        parts.push(`${hasChildren.length}개 - 하위 카테고리가 존재`)
+      }
+      message += parts.join(', ')
+
+      uiStore.showToast({ type: 'warning', message })
+    } else {
+      uiStore.showToast({ type: 'success', message: '카테고리가 저장되었습니다.' })
+    }
+
+    // 저장 성공 후 store 갱신 (다른 페이지에서도 최신 데이터 사용)
+    await catalogStore.refreshCategories($api)
+
+    // 서버의 최신 데이터로 동기화 (삭제 실패한 카테고리도 다시 표시됨)
+    await fetchCategories()
+  } catch (err) {
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || err.message || '저장에 실패했습니다.',
+    })
+
+    // 에러 시에도 서버 데이터로 동기화 (부분 성공 케이스 대응)
+    await fetchCategories()
+  } finally {
+    isSaving.value = false
+  }
 }
 
 // 변경 취소 (원본 데이터로 복원)
@@ -182,45 +181,45 @@ const addParentCategory = () => {
     return
   }
 
-  const newId = Date.now()
-  const maxOrder = Math.max(0, ...parentCategories.value.map((c) => c.order))
-
   categories.value.push({
-    id: newId,
+    id: null, // 새 항목은 null
     name,
-    parentId: null,
-    order: maxOrder + 1,
+    sortOrder: categories.value.length,
+    children: [],
   })
 
   newParentName.value = ''
 }
 
 // 소분류 추가
-const addChildCategory = (parentId) => {
-  const name = (newChildNames.value[parentId] || '').trim()
+const addChildCategory = (parent) => {
+  const name = (newChildNames.value[parent.id || `new-${categories.value.indexOf(parent)}`] || '').trim()
   if (!name) {
     uiStore.showToast({ type: 'error', message: '카테고리 이름을 입력해주세요.' })
     return
   }
 
-  const siblings = getChildCategories(parentId)
-  const maxOrder = Math.max(0, ...siblings.map((c) => c.order))
+  if (!parent.children) {
+    parent.children = []
+  }
 
-  const newId = Date.now()
-  categories.value.push({
-    id: newId,
+  parent.children.push({
+    id: null, // 새 항목은 null
     name,
-    parentId,
-    order: maxOrder + 1,
+    sortOrder: parent.children.length,
+    children: [],
   })
 
-  newChildNames.value[parentId] = ''
+  // 입력값 초기화
+  const key = parent.id || `new-${categories.value.indexOf(parent)}`
+  newChildNames.value[key] = ''
 }
 
 // 수정 모드 시작
 const startEdit = (category) => {
-  editingId.value = category.id
+  editingId.value = category.id || `temp-${Date.now()}`
   editingName.value = category.name
+  category._editKey = editingId.value
 }
 
 // 수정 취소
@@ -230,24 +229,22 @@ const cancelEdit = () => {
 }
 
 // 수정 저장
-const saveEdit = () => {
+const saveEdit = (category) => {
   const name = editingName.value.trim()
   if (!name) {
     uiStore.showToast({ type: 'error', message: '카테고리 이름을 입력해주세요.' })
     return
   }
 
-  const category = categories.value.find((c) => c.id === editingId.value)
-  if (category) {
-    category.name = name
-  }
-
+  category.name = name
+  delete category._editKey
   cancelEdit()
 }
 
 // 삭제 확인
-const confirmDelete = (category) => {
+const confirmDelete = (category, parentId = null) => {
   deleteTarget.value = category
+  deleteTargetParentId.value = parentId
   showDeleteModal.value = true
 }
 
@@ -255,20 +252,58 @@ const confirmDelete = (category) => {
 const executeDelete = () => {
   if (!deleteTarget.value) return
 
-  const targetId = deleteTarget.value.id
-  const isParent = !deleteTarget.value.parentId
+  const target = deleteTarget.value
+  const parentId = deleteTargetParentId.value
 
-  // 대분류면 소분류도 함께 삭제
-  if (isParent) {
-    categories.value = categories.value.filter(
-      (c) => c.id !== targetId && c.parentId !== targetId
-    )
+  // 삭제 대상 ID 수집 (기존 항목만)
+  const collectDeletedIds = (item) => {
+    const ids = []
+    if (item.id !== null) {
+      ids.push(item.id)
+    }
+    if (item.children) {
+      item.children.forEach((child) => {
+        ids.push(...collectDeletedIds(child))
+      })
+    }
+    return ids
+  }
+
+  // 삭제 ID 추가
+  const idsToDelete = collectDeletedIds(target)
+  deletedIds.value.push(...idsToDelete)
+
+  // 목록에서 제거
+  if (parentId === null) {
+    // 대분류 삭제
+    const index = categories.value.findIndex((c) => c === target)
+    if (index > -1) {
+      categories.value.splice(index, 1)
+    }
   } else {
-    categories.value = categories.value.filter((c) => c.id !== targetId)
+    // 소분류 삭제
+    const parent = categories.value.find((c) => c.id === parentId || c === parentId)
+    if (parent && parent.children) {
+      const index = parent.children.findIndex((c) => c === target)
+      if (index > -1) {
+        parent.children.splice(index, 1)
+      }
+    }
   }
 
   showDeleteModal.value = false
   deleteTarget.value = null
+  deleteTargetParentId.value = null
+}
+
+// 수정 중인지 확인
+const isEditing = (category) => {
+  return category._editKey === editingId.value
+}
+
+// 입력 키 생성 (새 항목용)
+const getInputKey = (parent) => {
+  return parent.id || `new-${categories.value.indexOf(parent)}`
 }
 
 // 초기 로드
@@ -315,13 +350,14 @@ onMounted(() => {
 
       <!-- 카테고리 목록 (드래그앤드롭) -->
       <draggable
-        v-model="draggableParents"
+        v-model="categories"
         item-key="id"
         handle=".parent-drag-handle"
         ghost-class="opacity-50"
         class="space-y-4"
+        :group="{ name: 'parents' }"
       >
-        <template #item="{ element: parent }">
+        <template #item="{ element: parent, index: parentIndex }">
           <div class="bg-white border border-neutral-200 rounded-xl overflow-hidden">
             <!-- 대분류 헤더 -->
             <div class="flex items-center gap-3 px-4 py-3 bg-neutral-50 border-b border-neutral-200">
@@ -340,165 +376,172 @@ onMounted(() => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
 
-            <!-- 수정 모드 -->
-            <template v-if="editingId === parent.id">
-              <input
-                v-model="editingName"
-                type="text"
-                class="flex-1 px-3 py-1.5 border border-primary-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary-500"
-                @keyup.enter="saveEdit"
-                @keyup.escape="cancelEdit"
-              >
-              <button
-                type="button"
-                class="px-3 py-1.5 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600"
-                @click="saveEdit"
-              >
-                저장
-              </button>
-              <button
-                type="button"
-                class="px-3 py-1.5 text-sm text-neutral-600 hover:text-neutral-900"
-                @click="cancelEdit"
-              >
-                취소
-              </button>
-            </template>
+              <!-- 수정 모드 -->
+              <template v-if="isEditing(parent)">
+                <input
+                  v-model="editingName"
+                  type="text"
+                  class="flex-1 px-3 py-1.5 border border-primary-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  @keyup.enter="saveEdit(parent)"
+                  @keyup.escape="cancelEdit"
+                >
+                <button
+                  type="button"
+                  class="px-3 py-1.5 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+                  @click="saveEdit(parent)"
+                >
+                  저장
+                </button>
+                <button
+                  type="button"
+                  class="px-3 py-1.5 text-sm text-neutral-600 hover:text-neutral-900"
+                  @click="cancelEdit"
+                >
+                  취소
+                </button>
+              </template>
 
-            <!-- 보기 모드 -->
-            <template v-else>
-              <span class="flex-1 font-medium text-neutral-900">{{ parent.name }}</span>
-              <button
-                type="button"
-                class="p-2 text-neutral-400 hover:text-primary-500 hover:bg-primary-50 rounded-lg transition-colors"
-                title="수정"
-                @click="startEdit(parent)"
-              >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                class="p-2 text-neutral-400 hover:text-error-500 hover:bg-error-50 rounded-lg transition-colors"
-                title="삭제"
-                @click="confirmDelete(parent)"
-              >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            </template>
-          </div>
-
-          <!-- 소분류 영역 -->
-          <div class="p-4">
-            <!-- 소분류 추가 -->
-            <div class="flex gap-2 mb-3">
-              <input
-                v-model="newChildNames[parent.id]"
-                type="text"
-                class="flex-1 px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="소분류 이름 입력"
-                @keyup.enter="addChildCategory(parent.id)"
-              >
-              <button
-                type="button"
-                class="px-4 py-2 text-sm bg-neutral-100 text-neutral-700 font-medium rounded-lg hover:bg-neutral-200 transition-colors"
-                @click="addChildCategory(parent.id)"
-              >
-                추가
-              </button>
+              <!-- 보기 모드 -->
+              <template v-else>
+                <span class="flex-1 font-medium text-neutral-900">
+                  {{ parent.name }}
+                  <span v-if="parent.id === null" class="ml-2 text-xs text-primary-500 font-normal">(신규)</span>
+                </span>
+                <button
+                  type="button"
+                  class="p-2 text-neutral-400 hover:text-primary-500 hover:bg-primary-50 rounded-lg transition-colors"
+                  title="수정"
+                  @click="startEdit(parent)"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="p-2 text-neutral-400 hover:text-error-500 hover:bg-error-50 rounded-lg transition-colors"
+                  title="삭제"
+                  @click="confirmDelete(parent, null)"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </template>
             </div>
 
-            <!-- 소분류 목록 (드래그앤드롭) -->
-            <draggable
-              v-if="hasChildren(parent.id)"
-              v-model="getDraggableChildren(parent.id).value"
-              item-key="id"
-              handle=".child-drag-handle"
-              ghost-class="opacity-50"
-              class="space-y-1"
-            >
-              <template #item="{ element: child }">
-                <div class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-50 group">
-                  <!-- 드래그 핸들 -->
-                  <button
-                    type="button"
-                    class="child-drag-handle p-0.5 cursor-grab active:cursor-grabbing text-neutral-300 hover:text-neutral-500"
-                    title="드래그하여 순서 변경"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
-                    </svg>
-                  </button>
+            <!-- 소분류 영역 -->
+            <div class="p-4">
+              <!-- 소분류 추가 -->
+              <div class="flex gap-2 mb-3">
+                <input
+                  v-model="newChildNames[getInputKey(parent)]"
+                  type="text"
+                  class="flex-1 px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="소분류 이름 입력"
+                  @keyup.enter="addChildCategory(parent)"
+                >
+                <button
+                  type="button"
+                  class="px-4 py-2 text-sm bg-neutral-100 text-neutral-700 font-medium rounded-lg hover:bg-neutral-200 transition-colors"
+                  @click="addChildCategory(parent)"
+                >
+                  추가
+                </button>
+              </div>
 
-                  <span class="w-4 text-neutral-300">└</span>
-
-                  <!-- 수정 모드 -->
-                  <template v-if="editingId === child.id">
-                    <input
-                      v-model="editingName"
-                      type="text"
-                      class="flex-1 px-2 py-1 border border-primary-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      @keyup.enter="saveEdit"
-                      @keyup.escape="cancelEdit"
-                    >
+              <!-- 소분류 목록 (드래그앤드롭) -->
+              <draggable
+                v-if="hasChildren(parent)"
+                v-model="parent.children"
+                item-key="id"
+                handle=".child-drag-handle"
+                ghost-class="opacity-50"
+                class="space-y-1"
+                :group="{ name: `children-${parentIndex}` }"
+              >
+                <template #item="{ element: child }">
+                  <div class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-50 group">
+                    <!-- 드래그 핸들 -->
                     <button
                       type="button"
-                      class="px-2 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600"
-                      @click="saveEdit"
-                    >
-                      저장
-                    </button>
-                    <button
-                      type="button"
-                      class="px-2 py-1 text-xs text-neutral-600 hover:text-neutral-900"
-                      @click="cancelEdit"
-                    >
-                      취소
-                    </button>
-                  </template>
-
-                  <!-- 보기 모드 -->
-                  <template v-else>
-                    <span class="flex-1 text-sm text-neutral-700">{{ child.name }}</span>
-                    <button
-                      type="button"
-                      class="p-1.5 text-neutral-300 hover:text-primary-500 hover:bg-primary-50 rounded opacity-0 group-hover:opacity-100 transition-all"
-                      title="수정"
-                      @click="startEdit(child)"
+                      class="child-drag-handle p-0.5 cursor-grab active:cursor-grabbing text-neutral-300 hover:text-neutral-500"
+                      title="드래그하여 순서 변경"
                     >
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
                       </svg>
                     </button>
-                    <button
-                      type="button"
-                      class="p-1.5 text-neutral-300 hover:text-error-500 hover:bg-error-50 rounded opacity-0 group-hover:opacity-100 transition-all"
-                      title="삭제"
-                      @click="confirmDelete(child)"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </template>
-                </div>
-              </template>
-            </draggable>
 
-            <!-- 소분류 없음 -->
-            <p v-if="!hasChildren(parent.id)" class="text-sm text-neutral-400 text-center py-2">
-              소분류가 없습니다
-            </p>
+                    <span class="w-4 text-neutral-300">└</span>
+
+                    <!-- 수정 모드 -->
+                    <template v-if="isEditing(child)">
+                      <input
+                        v-model="editingName"
+                        type="text"
+                        class="flex-1 px-2 py-1 border border-primary-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        @keyup.enter="saveEdit(child)"
+                        @keyup.escape="cancelEdit"
+                      >
+                      <button
+                        type="button"
+                        class="px-2 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600"
+                        @click="saveEdit(child)"
+                      >
+                        저장
+                      </button>
+                      <button
+                        type="button"
+                        class="px-2 py-1 text-xs text-neutral-600 hover:text-neutral-900"
+                        @click="cancelEdit"
+                      >
+                        취소
+                      </button>
+                    </template>
+
+                    <!-- 보기 모드 -->
+                    <template v-else>
+                      <span class="flex-1 text-sm text-neutral-700">
+                        {{ child.name }}
+                        <span v-if="child.id === null" class="ml-1 text-xs text-primary-500">(신규)</span>
+                      </span>
+                      <button
+                        type="button"
+                        class="p-1.5 text-neutral-300 hover:text-primary-500 hover:bg-primary-50 rounded opacity-0 group-hover:opacity-100 transition-all"
+                        title="수정"
+                        @click="startEdit(child)"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        class="p-1.5 text-neutral-300 hover:text-error-500 hover:bg-error-50 rounded opacity-0 group-hover:opacity-100 transition-all"
+                        title="삭제"
+                        @click="confirmDelete(child, parent)"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </template>
+                  </div>
+                </template>
+              </draggable>
+
+              <!-- 소분류 없음 -->
+              <p v-if="!hasChildren(parent)" class="text-sm text-neutral-400 text-center py-2">
+                소분류가 없습니다
+              </p>
+            </div>
           </div>
-        </div>
         </template>
       </draggable>
 
       <!-- 카테고리 없음 -->
-      <div v-if="parentCategories.length === 0" class="text-center py-12 bg-white border border-neutral-200 rounded-xl">
+      <div v-if="categories.length === 0" class="text-center py-12 bg-white border border-neutral-200 rounded-xl">
         <svg class="w-12 h-12 mx-auto text-neutral-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
         </svg>
@@ -522,7 +565,7 @@ onMounted(() => {
         <p class="text-neutral-900 font-medium mb-2">
           "{{ deleteTarget?.name }}"을(를) 삭제하시겠습니까?
         </p>
-        <p v-if="deleteTarget && !deleteTarget.parentId && hasChildren(deleteTarget.id)" class="text-sm text-error-600">
+        <p v-if="deleteTarget && deleteTargetParentId === null && hasChildren(deleteTarget)" class="text-sm text-error-600">
           하위 소분류도 함께 삭제됩니다.
         </p>
       </div>
