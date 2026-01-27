@@ -48,7 +48,7 @@ const isChangingStatus = ref(false)
 // 주문 상태 옵션
 const statusOptions = [
   { value: 'PENDING', label: '결제대기' },
-  { value: 'PAID', label: '결제완료' },
+  { value: 'PAID', label: '주문완료' },
   { value: 'PREPARING', label: '상품준비중' },
   { value: 'SHIPPING', label: '배송중' },
   { value: 'DELIVERED', label: '배송완료' },
@@ -59,7 +59,7 @@ const statusOptions = [
 // 주문 상태 매핑
 const statusMap = {
   PENDING: { label: '결제대기', variant: 'neutral' },
-  PAID: { label: '결제완료', variant: 'primary' },
+  PAID: { label: '주문완료', variant: 'primary' },
   PREPARING: { label: '상품준비중', variant: 'warning' },
   SHIPPING: { label: '배송중', variant: 'info' },
   DELIVERED: { label: '배송완료', variant: 'success' },

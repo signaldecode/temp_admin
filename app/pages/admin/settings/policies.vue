@@ -97,11 +97,18 @@ const handleSave = async () => {
   isSaving.value = true
 
   try {
+    // 반품/교환 기간을 자동 구매확정 기간과 동기화
+    const syncedReturnPolicy = {
+      ...returnPolicy.value,
+      returnDays: order.value.autoConfirmDays,
+      exchangeDays: order.value.autoConfirmDays,
+    }
+
     const requestData = {
       order: order.value,
       delivery: delivery.value,
       product: product.value,
-      returnPolicy: returnPolicy.value,
+      returnPolicy: syncedReturnPolicy,
     }
 
     await $api.put('/admin/policy', requestData)
@@ -210,20 +217,6 @@ onMounted(() => {
                 >
                 <span class="text-sm text-neutral-500">개</span>
               </div>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">
-                주문 취소 가능 시간
-              </label>
-              <div class="flex items-center gap-2">
-                <input
-                  v-model.number="order.cancelHours"
-                  type="number"
-                  class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                >
-                <span class="text-sm text-neutral-500">시간 이내</span>
-              </div>
-              <p class="text-xs text-neutral-400 mt-1">결제 완료 후 취소 가능한 시간</p>
             </div>
           </div>
         </UiCard>
@@ -502,9 +495,10 @@ onMounted(() => {
               <div class="flex items-center gap-2">
                 <span class="text-sm text-neutral-500">수령 후</span>
                 <input
-                  v-model.number="returnPolicy.returnDays"
+                  :value="order.autoConfirmDays"
                   type="number"
-                  class="w-20 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  disabled
+                  class="w-20 px-3 py-2 border border-neutral-200 rounded-lg text-sm bg-neutral-100 text-neutral-500 cursor-not-allowed"
                 >
                 <span class="text-sm text-neutral-500">일 이내</span>
               </div>
@@ -516,14 +510,19 @@ onMounted(() => {
               <div class="flex items-center gap-2">
                 <span class="text-sm text-neutral-500">수령 후</span>
                 <input
-                  v-model.number="returnPolicy.exchangeDays"
+                  :value="order.autoConfirmDays"
                   type="number"
-                  class="w-20 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  disabled
+                  class="w-20 px-3 py-2 border border-neutral-200 rounded-lg text-sm bg-neutral-100 text-neutral-500 cursor-not-allowed"
                 >
                 <span class="text-sm text-neutral-500">일 이내</span>
               </div>
             </div>
           </div>
+          <p class="text-xs text-neutral-400 mt-3">
+            반품/교환 기간은 자동 구매확정 기간({{ order.autoConfirmDays }}일)과 동일하게 적용됩니다.
+            변경하려면 주문 정책 탭에서 자동 구매확정 기간을 수정하세요.
+          </p>
         </UiCard>
 
         <UiCard>

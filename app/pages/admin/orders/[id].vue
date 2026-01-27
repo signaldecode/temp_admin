@@ -33,7 +33,7 @@ const carriers = computed(() => catalogStore.carriers)
 // 주문 상태 매핑
 const statusMap = {
   PENDING: { label: '결제대기', variant: 'neutral' },
-  PAID: { label: '결제완료', variant: 'primary' },
+  PAID: { label: '주문완료', variant: 'primary' },
   PREPARING: { label: '상품준비중', variant: 'warning' },
   SHIPPING: { label: '배송중', variant: 'info' },
   DELIVERED: { label: '배송완료', variant: 'success' },
@@ -63,15 +63,38 @@ const paymentStatusMap = {
 }
 
 // 주문 상태 옵션
-const statusOptions = [
+const allStatusOptions = [
   { value: 'PENDING', label: '결제대기' },
-  { value: 'PAID', label: '결제완료' },
+  { value: 'PAID', label: '주문완료' },
   { value: 'PREPARING', label: '상품준비중' },
   { value: 'SHIPPING', label: '배송중' },
   { value: 'DELIVERED', label: '배송완료' },
   { value: 'CANCELLED', label: '취소' },
   { value: 'REFUNDED', label: '환불' },
 ]
+
+// 상태별 허용 전이 규칙
+// - 취소: 상품준비중 전까지만 가능 (배송 프로세스 시작 전)
+// - 환불: 배송완료 후에도 가능 (반품 후 환불)
+// - 상품준비중 이후: 순방향 진행 + 환불만 가능 (역방향 불가)
+const allowedTransitions = {
+  PENDING: ['PAID', 'CANCELLED'],           // 결제대기 → 주문완료, 취소
+  PAID: ['PREPARING', 'CANCELLED', 'REFUNDED'], // 주문완료 → 상품준비중, 취소, 환불
+  PREPARING: ['SHIPPING', 'DELIVERED'],     // 상품준비중 → 배송중, 배송완료 (취소 불가, 환불은 배송완료 후)
+  SHIPPING: ['DELIVERED'],                  // 배송중 → 배송완료만 가능
+  DELIVERED: ['REFUNDED'],                  // 배송완료 → 환불 가능 (반품 처리)
+  CANCELLED: [],                            // 취소 → 변경 불가
+  REFUNDED: [],                             // 환불 → 변경 불가
+}
+
+// 현재 상태에서 변경 가능한 상태 옵션
+const statusOptions = computed(() => {
+  const currentStatus = order.value?.status
+  if (!currentStatus) return []
+
+  const allowed = allowedTransitions[currentStatus] || []
+  return allStatusOptions.filter(opt => allowed.includes(opt.value))
+})
 
 // 데이터 로드
 const fetchOrder = async () => {
@@ -165,6 +188,7 @@ const selectedStatus = ref('')
 const selectedCarrierId = ref('')
 const trackingNumber = ref('')
 const statusReason = ref('')
+const showConfirmStep = ref(false) // 확인 단계 표시 여부
 
 // 배송중 상태에서 송장번호 필수 여부
 const isShippingSelected = computed(() => selectedStatus.value === 'SHIPPING')
@@ -174,9 +198,37 @@ const canChangeStatus = computed(() => {
   return true
 })
 
+// 상태 변경 가능 여부
+const canOpenStatusModal = computed(() => {
+  return statusOptions.value.length > 0
+})
+
+// 상태 변경 불가 사유 메시지
+const getStatusChangeBlockedMessage = () => {
+  const currentStatus = order.value?.status
+  if (currentStatus === 'DELIVERED') {
+    return '배송완료 상태에서는 상태를 변경할 수 없습니다.\n환불이 필요하면 별도로 환불 처리를 진행해 주세요.'
+  }
+  if (currentStatus === 'CANCELLED') {
+    return '취소된 주문은 상태를 변경할 수 없습니다.'
+  }
+  if (currentStatus === 'REFUNDED') {
+    return '환불된 주문은 상태를 변경할 수 없습니다.'
+  }
+  return '현재 상태에서는 변경할 수 있는 상태가 없습니다.'
+}
+
 const openStatusModal = () => {
-  selectedStatus.value = order.value.status
+  // 변경 가능한 상태가 없으면 안내 모달 표시
+  if (!canOpenStatusModal.value) {
+    showStatusModal.value = true
+    return
+  }
+
+  // 첫 번째 옵션을 기본 선택
+  selectedStatus.value = statusOptions.value[0]?.value || ''
   statusReason.value = ''
+  showConfirmStep.value = false // 확인 단계 초기화
 
   // 기존 배송 정보가 있으면 미리 채워줌
   const shipping = order.value.shipping
@@ -192,9 +244,33 @@ const openStatusModal = () => {
   showStatusModal.value = true
 }
 
-const handleStatusChange = async () => {
+// 되돌릴 수 없는 상태 변경인지 확인
+const isIrreversibleChange = computed(() => {
+  // 상품준비중, 배송중, 배송완료, 환불로 변경하는 경우 되돌릴 수 없음
+  return ['PREPARING', 'SHIPPING', 'DELIVERED', 'REFUNDED'].includes(selectedStatus.value)
+})
+
+// 변경 버튼 클릭 시
+const handleChangeClick = () => {
   if (!canChangeStatus.value) return
 
+  // 되돌릴 수 없는 변경인 경우 확인 단계 표시
+  if (isIrreversibleChange.value) {
+    showConfirmStep.value = true
+    return
+  }
+
+  // 되돌릴 수 있는 변경은 바로 실행
+  executeStatusChange()
+}
+
+// 확인 단계에서 뒤로 가기
+const goBackFromConfirm = () => {
+  showConfirmStep.value = false
+}
+
+// 실제 상태 변경 실행
+const executeStatusChange = async () => {
   isChangingStatus.value = true
 
   try {
@@ -342,7 +418,11 @@ onMounted(() => {
           <template #header>
             <div class="flex items-center justify-between">
               <h3 class="font-semibold text-neutral-900">배송지 정보</h3>
-              <UiButton variant="primary" size="sm" @click="openStatusModal">
+              <UiButton
+                variant="primary"
+                size="sm"
+                @click="openStatusModal"
+              >
                 상태 변경
               </UiButton>
             </div>
@@ -523,79 +603,165 @@ onMounted(() => {
     <!-- Status Change Modal -->
     <UiModal
       v-model="showStatusModal"
-      title="주문 상태 변경"
+      :title="showConfirmStep ? '상태 변경 확인' : '주문 상태 변경'"
       size="sm"
     >
-      <p class="text-sm text-neutral-600 mb-4">
-        주문 <span class="font-medium text-neutral-900">{{ order?.orderNumber }}</span>의 상태를 변경합니다.
-      </p>
+      <!-- 확인 단계 -->
+      <template v-if="showConfirmStep">
+        <div class="text-center py-4">
+          <!-- 경고 아이콘 -->
+          <div class="mx-auto w-12 h-12 rounded-full bg-warning-100 flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-warning-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
 
-      <div class="space-y-2">
-        <label
-          v-for="option in statusOptions"
-          :key="option.value"
-          :class="[
-            'flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors',
-            selectedStatus === option.value
-              ? 'border-primary-500 bg-primary-50'
-              : 'border-neutral-200 hover:border-neutral-300',
-          ]"
-        >
-          <input
-            v-model="selectedStatus"
-            type="radio"
-            :value="option.value"
-            class="w-4 h-4 text-primary-600 focus:ring-primary-500"
-          >
-          <span class="font-medium">{{ option.label }}</span>
-          <UiBadge :variant="statusMap[option.value]?.variant" size="sm" class="ml-auto">
-            {{ option.label }}
-          </UiBadge>
-        </label>
-      </div>
+          <h3 class="text-lg font-semibold text-neutral-900 mb-2">
+            정말 변경하시겠습니까?
+          </h3>
 
-      <!-- 배송중 선택 시 송장번호 입력 -->
-      <div v-if="isShippingSelected" class="mt-4 p-4 bg-neutral-50 rounded-lg space-y-3">
-        <p class="text-sm font-medium text-neutral-700">송장 정보 입력</p>
-        <div>
-          <label class="block text-sm text-neutral-600 mb-1">택배사 <span class="text-error-500">*</span></label>
-          <select
-            v-model="selectedCarrierId"
-            class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          >
-            <option value="">택배사 선택</option>
-            <option v-for="carrier in carriers" :key="carrier.id" :value="carrier.id">
-              {{ carrier.name }}
-            </option>
-          </select>
+          <p class="text-sm text-neutral-600 mb-4">
+            <span class="font-medium text-primary-600">{{ allStatusOptions.find(o => o.value === selectedStatus)?.label }}</span>
+            상태로 변경하면<br>
+            <span class="text-error-600 font-medium">이전 상태로 되돌릴 수 없습니다.</span>
+          </p>
+
+          <div class="bg-neutral-50 rounded-lg p-3 text-left">
+            <p class="text-xs text-neutral-500 mb-1">변경 후 문제가 발생하면</p>
+            <p class="text-sm text-neutral-700">별도의 <span class="font-medium">환불 처리</span>를 진행해 주세요.</p>
+          </div>
         </div>
-        <div>
-          <label class="block text-sm text-neutral-600 mb-1">송장번호 <span class="text-error-500">*</span></label>
-          <input
-            v-model="trackingNumber"
-            type="text"
-            placeholder="송장번호를 입력하세요"
-            class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          >
+      </template>
+
+      <!-- 상태 변경 불가 안내 -->
+      <template v-else-if="!canOpenStatusModal">
+        <div class="text-center py-4">
+          <!-- 안내 아이콘 -->
+          <div class="mx-auto w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+
+          <h3 class="text-lg font-semibold text-neutral-900 mb-2">
+            상태 변경 불가
+          </h3>
+
+          <p class="text-sm text-neutral-600 whitespace-pre-line">
+            {{ getStatusChangeBlockedMessage() }}
+          </p>
         </div>
-        <p v-if="!selectedCarrierId || !trackingNumber.trim()" class="text-xs text-error-500">
-          배송중 상태로 변경하려면 택배사와 송장번호를 입력해야 합니다.
+      </template>
+
+      <!-- 상태 선택 단계 -->
+      <template v-else>
+        <p class="text-sm text-neutral-600 mb-4">
+          주문 <span class="font-medium text-neutral-900">{{ order?.orderNumber }}</span>의 상태를 변경합니다.
         </p>
-      </div>
 
-      <!-- 변경 사유 -->
-      <div class="mt-4">
-        <label class="block text-sm text-neutral-600 mb-1">변경 사유</label>
-        <input
-          v-model="statusReason"
-          type="text"
-          placeholder="변경 사유를 입력하세요 (선택)"
-          class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-        >
-      </div>
+        <div class="space-y-2">
+          <label
+            v-for="option in statusOptions"
+            :key="option.value"
+            :class="[
+              'flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors',
+              selectedStatus === option.value
+                ? 'border-primary-500 bg-primary-50'
+                : 'border-neutral-200 hover:border-neutral-300',
+            ]"
+          >
+            <input
+              v-model="selectedStatus"
+              type="radio"
+              :value="option.value"
+              class="w-4 h-4 text-primary-600 focus:ring-primary-500"
+            >
+            <span class="font-medium">{{ option.label }}</span>
+            <UiBadge :variant="statusMap[option.value]?.variant" size="sm" class="ml-auto">
+              {{ option.label }}
+            </UiBadge>
+          </label>
+        </div>
+
+        <!-- 되돌릴 수 없는 상태 변경 경고 -->
+        <div v-if="isIrreversibleChange" class="mt-3 p-3 bg-warning-50 border border-warning-200 rounded-lg">
+          <p class="text-sm text-warning-700">
+            <span class="font-medium">주의:</span> 이 상태로 변경하면 이전 상태로 되돌릴 수 없습니다.
+          </p>
+        </div>
+
+        <!-- 배송중 선택 시 송장번호 입력 -->
+        <div v-if="isShippingSelected" class="mt-4 p-4 bg-neutral-50 rounded-lg space-y-3">
+          <p class="text-sm font-medium text-neutral-700">송장 정보 입력</p>
+          <div>
+            <label class="block text-sm text-neutral-600 mb-1">택배사 <span class="text-error-500">*</span></label>
+            <select
+              v-model="selectedCarrierId"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="">택배사 선택</option>
+              <option v-for="carrier in carriers" :key="carrier.id" :value="carrier.id">
+                {{ carrier.name }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm text-neutral-600 mb-1">송장번호 <span class="text-error-500">*</span></label>
+            <input
+              v-model="trackingNumber"
+              type="text"
+              placeholder="송장번호를 입력하세요"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            >
+          </div>
+          <p v-if="!selectedCarrierId || !trackingNumber.trim()" class="text-xs text-error-500">
+            배송중 상태로 변경하려면 택배사와 송장번호를 입력해야 합니다.
+          </p>
+        </div>
+
+        <!-- 변경 사유 -->
+        <div class="mt-4">
+          <label class="block text-sm text-neutral-600 mb-1">변경 사유</label>
+          <input
+            v-model="statusReason"
+            type="text"
+            placeholder="변경 사유를 입력하세요 (선택)"
+            class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          >
+        </div>
+      </template>
 
       <template #footer>
-        <div class="flex justify-end gap-2">
+        <!-- 확인 단계 버튼 -->
+        <div v-if="showConfirmStep" class="flex justify-end gap-2">
+          <UiButton
+            variant="outline"
+            :disabled="isChangingStatus"
+            @click="goBackFromConfirm"
+          >
+            뒤로
+          </UiButton>
+          <UiButton
+            variant="error"
+            :loading="isChangingStatus"
+            @click="executeStatusChange"
+          >
+            변경 확정
+          </UiButton>
+        </div>
+
+        <!-- 상태 변경 불가 시 닫기 버튼 -->
+        <div v-else-if="!canOpenStatusModal" class="flex justify-end">
+          <UiButton
+            variant="outline"
+            @click="showStatusModal = false"
+          >
+            닫기
+          </UiButton>
+        </div>
+
+        <!-- 상태 선택 단계 버튼 -->
+        <div v-else class="flex justify-end gap-2">
           <UiButton
             variant="outline"
             :disabled="isChangingStatus"
@@ -607,7 +773,7 @@ onMounted(() => {
             variant="primary"
             :disabled="!canChangeStatus"
             :loading="isChangingStatus"
-            @click="handleStatusChange"
+            @click="handleChangeClick"
           >
             변경
           </UiButton>
