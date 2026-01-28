@@ -351,7 +351,7 @@ onMounted(() => {
 
         <UiCard>
           <template #header>
-            <h3 class="font-semibold text-neutral-900">배송 안내</h3>
+            <h3 class="font-semibold text-neutral-900">배송 안내 (상품 상세페이지에 표시됩니다.)</h3>
           </template>
           <div class="space-y-4">
             <div class="max-w-md">
@@ -470,7 +470,7 @@ onMounted(() => {
 
         <UiCard>
           <template #header>
-            <h3 class="font-semibold text-neutral-900">상품 안내문</h3>
+            <h3 class="font-semibold text-neutral-900">상품 안내문 (상품 상세페이지에 표시됩니다.)</h3>
           </template>
           <textarea
             v-model="product.guideText"
@@ -587,7 +587,7 @@ onMounted(() => {
 
         <UiCard>
           <template #header>
-            <h3 class="font-semibold text-neutral-900">반품/교환 안내문</h3>
+            <h3 class="font-semibold text-neutral-900">반품/교환 안내문 (상품 상세페이지에 표시됩니다.)</h3>
           </template>
           <textarea
             v-model="returnPolicy.guideText"

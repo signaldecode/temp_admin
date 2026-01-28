@@ -1,90 +1,156 @@
 <script setup>
 /**
  * 공지사항 목록 페이지
+ * GET /admin/notices
+ * - status: ACTIVE | INACTIVE
+ * - page: number (0-based)
+ * - size: number (default: 20)
  */
 
 import { useUiStore } from '~/stores/ui'
+import { useApi } from '~/composables/useApi'
 import { formatDate } from '~/utils/formatters'
 
 const router = useRouter()
 const uiStore = useUiStore()
+const { get } = useApi()
 
-const categoryOptions = [
-  { value: 'general', label: '일반' },
-  { value: 'event', label: '이벤트' },
-  { value: 'system', label: '시스템' },
-  { value: 'shipping', label: '배송' },
-]
-
+// 상태 옵션
 const statusOptions = [
-  { value: 'published', label: '게시중', color: 'success' },
-  { value: 'draft', label: '임시저장', color: 'warning' },
+  { value: 'ACTIVE', label: '노출', color: 'success' },
+  { value: 'INACTIVE', label: '숨김', color: 'warning' },
 ]
 
-const notices = ref([
-  { id: 1, title: '2025년 신년 운영 안내', category: 'general', status: 'published', isPinned: true, viewCount: 1520, createdAt: '2025-01-01' },
-  { id: 2, title: '설 연휴 배송 안내', category: 'shipping', status: 'published', isPinned: true, viewCount: 890, createdAt: '2025-01-10' },
-  { id: 3, title: '시스템 점검 안내', category: 'system', status: 'published', isPinned: false, viewCount: 450, createdAt: '2025-01-05' },
-  { id: 4, title: '신규 이벤트 안내', category: 'event', status: 'draft', isPinned: false, viewCount: 0, createdAt: '2025-01-08' },
-])
+// 분류(타입) 옵션
+const typeOptions = [
+  { value: 'NOTICE', label: '공지' },
+  { value: 'EVENT', label: '이벤트' },
+  { value: 'INFO', label: '안내' },
+  { value: 'MAINTENANCE', label: '점검' },
+]
 
-const filterCategory = ref('')
+// 공지사항 목록
+const notices = ref([])
+
+// 로딩 상태
+const isLoading = ref(false)
+
+// 필터
 const filterStatus = ref('')
 const searchKeyword = ref('')
 
+// 페이지네이션
+const currentPage = ref(1)
+const perPage = 20
+const totalItems = ref(0)
+const totalPages = computed(() => Math.ceil(totalItems.value / perPage))
+
+// 공지사항 목록 조회 API
+const fetchNotices = async () => {
+  isLoading.value = true
+
+  try {
+    const params = {
+      page: currentPage.value - 1, // API는 0-based
+      size: perPage,
+    }
+
+    // status 필터 적용
+    if (filterStatus.value) {
+      params.status = filterStatus.value
+    }
+
+    const response = await get('/admin/notices', params)
+
+    notices.value = response.data.content || []
+    totalItems.value = response.data.total_elements || 0
+    selectedIds.value = []
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '공지사항 목록을 불러오는데 실패했습니다.',
+    })
+    notices.value = []
+    totalItems.value = 0
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 프론트 필터링 (keyword는 API에서 지원 안 함)
 const filteredNotices = computed(() => {
   let result = [...notices.value]
-  if (filterCategory.value) result = result.filter((n) => n.category === filterCategory.value)
-  if (filterStatus.value) result = result.filter((n) => n.status === filterStatus.value)
   if (searchKeyword.value.trim()) {
     const keyword = searchKeyword.value.toLowerCase()
-    result = result.filter((n) => n.title.toLowerCase().includes(keyword))
+    result = result.filter((n) => n.title?.toLowerCase().includes(keyword))
   }
+  // 고정글 우선 정렬
   return result.sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0))
 })
 
+// 테이블 컬럼
 const tableColumns = [
   { key: 'title', label: '제목' },
-  { key: 'category', label: '분류' },
-  { key: 'viewCount', label: '조회수' },
+  { key: 'type', label: '분류' },
+  { key: 'viewCount', label: '조회수', align: 'center' },
   { key: 'createdAt', label: '등록일' },
-  { key: 'status', label: '상태' },
+  { key: 'status', label: '상태', align: 'center' },
 ]
 
+// 벌크 선택
 const selectedIds = ref([])
-const handleSelectAll = (selectAll) => { selectedIds.value = selectAll ? paginatedNotices.value.map((n) => n.id) : [] }
+const handleSelectAll = (selectAll) => {
+  selectedIds.value = selectAll ? filteredNotices.value.map((n) => n.id) : []
+}
 const handleSelect = (id) => {
   const idx = selectedIds.value.indexOf(id)
   idx > -1 ? selectedIds.value.splice(idx, 1) : selectedIds.value.push(id)
 }
 
+// 벌크 삭제
 const bulkDelete = () => {
   if (!selectedIds.value.length || !confirm(`선택한 ${selectedIds.value.length}개를 삭제하시겠습니까?`)) return
+  // TODO: 벌크 삭제 API 연동
   notices.value = notices.value.filter((n) => !selectedIds.value.includes(n.id))
   selectedIds.value = []
   uiStore.showToast({ type: 'success', message: '삭제되었습니다.' })
 }
 
-const getCategoryLabel = (category) => categoryOptions.find((c) => c.value === category)?.label || category
-const getStatusBadge = (status) => statusOptions.find((s) => s.value === status) || statusOptions[1]
+// 헬퍼
+const getStatusBadge = (status) => {
+  return statusOptions.find((s) => s.value === status) || { label: status || '-', color: 'neutral' }
+}
 
+const getTypeLabel = (type) => {
+  return typeOptions.find((t) => t.value === type)?.label || type || '-'
+}
+
+// 페이지 이동
 const goToCreate = () => router.push('/admin/contents/notices/new')
 const goToDetail = (notice) => router.push(`/admin/contents/notices/${notice.id}`)
 
-const handleSearch = () => { currentPage.value = 1 }
+// 검색
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchNotices()
+}
+
 const handleReset = () => {
-  filterCategory.value = ''
   filterStatus.value = ''
   searchKeyword.value = ''
   currentPage.value = 1
+  fetchNotices()
 }
 
-const currentPage = ref(1)
-const perPage = 30
-const totalPages = computed(() => Math.ceil(filteredNotices.value.length / perPage))
-const paginatedNotices = computed(() => {
-  const start = (currentPage.value - 1) * perPage
-  return filteredNotices.value.slice(start, start + perPage)
+// 페이지 변경
+const handlePageChange = (page) => {
+  currentPage.value = page
+  fetchNotices()
+}
+
+// 초기 로드
+onMounted(() => {
+  fetchNotices()
 })
 </script>
 
@@ -102,17 +168,24 @@ const paginatedNotices = computed(() => {
     <template #filters>
       <DomainFilterCard @search="handleSearch" @reset="handleReset">
         <template #selects>
-          <select v-model="filterCategory" class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-            <option value="">분류 전체</option>
-            <option v-for="opt in categoryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
-          <select v-model="filterStatus" class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          <select
+            v-model="filterStatus"
+            class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
             <option value="">상태 전체</option>
-            <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
           </select>
         </template>
         <template #search>
-          <input v-model="searchKeyword" type="text" placeholder="제목으로 검색" class="flex-1 min-w-0 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" @keyup.enter="handleSearch">
+          <input
+            v-model="searchKeyword"
+            type="text"
+            placeholder="제목으로 검색"
+            class="flex-1 min-w-0 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            @keyup.enter="handleSearch"
+          >
         </template>
       </DomainFilterCard>
     </template>
@@ -123,37 +196,83 @@ const paginatedNotices = computed(() => {
       </DomainBulkActionBar>
     </template>
 
-    <DomainDataTable :columns="tableColumns" :items="paginatedNotices" :selected-ids="selectedIds" selectable empty-title="등록된 공지사항이 없습니다" @select="handleSelect" @select-all="handleSelectAll" @row-click="goToDetail">
+    <!-- 로딩 -->
+    <div v-if="isLoading" class="flex-1 flex items-center justify-center bg-white rounded-lg border border-neutral-200">
+      <UiSpinner size="lg" />
+    </div>
+
+    <DomainDataTable
+      v-else
+      :columns="tableColumns"
+      :items="filteredNotices"
+      :selected-ids="selectedIds"
+      selectable
+      empty-title="등록된 공지사항이 없습니다"
+      empty-description="새 공지사항을 등록해보세요."
+      @select="handleSelect"
+      @select-all="handleSelectAll"
+      @row-click="goToDetail"
+    >
       <template #cell-title="{ item }">
         <div class="flex items-center gap-2">
           <span v-if="item.isPinned" class="text-primary-500">
-            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5 5a2 2 0 012-2h6a2 2 0 012 2v2h2a1 1 0 010 2h-1.268l-.686 6.858A2 2 0 0113.06 18H6.94a2 2 0 01-1.986-1.858L4.268 9H3a1 1 0 010-2h2V5z" /></svg>
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M5 5a2 2 0 012-2h6a2 2 0 012 2v2h2a1 1 0 010 2h-1.268l-.686 6.858A2 2 0 0113.06 18H6.94a2 2 0 01-1.986-1.858L4.268 9H3a1 1 0 010-2h2V5z" />
+            </svg>
           </span>
-          <p class="text-sm font-medium text-neutral-900">{{ item.title }}</p>
+          <p class="text-sm font-medium text-neutral-900">{{ item.title || '-' }}</p>
         </div>
       </template>
-      <template #cell-category="{ item }"><span class="text-sm text-neutral-600">{{ getCategoryLabel(item.category) }}</span></template>
-      <template #cell-viewCount="{ item }"><span class="text-sm text-neutral-600">{{ item.viewCount.toLocaleString() }}</span></template>
-      <template #cell-createdAt="{ item }"><span class="text-sm text-neutral-600">{{ formatDate(item.createdAt) }}</span></template>
-      <template #cell-status="{ item }"><UiBadge :variant="getStatusBadge(item.status).color" size="sm">{{ getStatusBadge(item.status).label }}</UiBadge></template>
+
+      <template #cell-type="{ item }">
+        <span class="text-sm text-neutral-600">{{ getTypeLabel(item.type) }}</span>
+      </template>
+
+      <template #cell-viewCount="{ item }">
+        <span class="text-sm text-neutral-600">{{ (item.viewCount || 0).toLocaleString() }}</span>
+      </template>
+
+      <template #cell-createdAt="{ item }">
+        <span class="text-sm text-neutral-600">{{ item.createdAt ? formatDate(item.createdAt) : '-' }}</span>
+      </template>
+
+      <template #cell-status="{ item }">
+        <UiBadge :variant="getStatusBadge(item.status).color" size="sm">
+          {{ getStatusBadge(item.status).label }}
+        </UiBadge>
+      </template>
+
       <template #mobile-card="{ item }">
         <div class="flex items-center justify-between mb-1">
           <div class="flex items-center gap-2 flex-1 min-w-0">
-            <span v-if="item.isPinned" class="text-primary-500"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5 5a2 2 0 012-2h6a2 2 0 012 2v2h2a1 1 0 010 2h-1.268l-.686 6.858A2 2 0 0113.06 18H6.94a2 2 0 01-1.986-1.858L4.268 9H3a1 1 0 010-2h2V5z" /></svg></span>
-            <p class="text-sm font-medium text-neutral-900 truncate">{{ item.title }}</p>
+            <span v-if="item.isPinned" class="text-primary-500">
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M5 5a2 2 0 012-2h6a2 2 0 012 2v2h2a1 1 0 010 2h-1.268l-.686 6.858A2 2 0 0113.06 18H6.94a2 2 0 01-1.986-1.858L4.268 9H3a1 1 0 010-2h2V5z" />
+              </svg>
+            </span>
+            <p class="text-sm font-medium text-neutral-900 truncate">{{ item.title || '-' }}</p>
           </div>
-          <UiBadge :variant="getStatusBadge(item.status).color" size="sm">{{ getStatusBadge(item.status).label }}</UiBadge>
+          <UiBadge :variant="getStatusBadge(item.status).color" size="sm">
+            {{ getStatusBadge(item.status).label }}
+          </UiBadge>
         </div>
         <div class="flex items-center gap-4 text-xs text-neutral-400">
-          <span>{{ getCategoryLabel(item.category) }}</span>
-          <span>{{ formatDate(item.createdAt) }}</span>
-          <span>조회 {{ item.viewCount }}</span>
+          <span>{{ getTypeLabel(item.type) }}</span>
+          <span>{{ item.createdAt ? formatDate(item.createdAt) : '-' }}</span>
+          <span>조회 {{ item.viewCount || 0 }}</span>
         </div>
       </template>
     </DomainDataTable>
 
     <template #pagination>
-      <UiPagination v-model:currentPage="currentPage" :total-pages="totalPages" :total-items="filteredNotices.length" :per-page="perPage" />
+      <UiPagination
+        v-if="totalPages > 0 && !isLoading"
+        v-model:current-page="currentPage"
+        :total-pages="totalPages"
+        :total-items="totalItems"
+        :per-page="perPage"
+        @change="handlePageChange"
+      />
     </template>
   </LayoutListPage>
 </template>

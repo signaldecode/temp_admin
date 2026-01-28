@@ -26,7 +26,6 @@ const form = ref({
   question: '',
   answer: '',
   category: 'order',
-  order: 1,
 })
 
 const isLoading = ref(false)
@@ -39,7 +38,6 @@ const fetchFaq = async () => {
     question: '배송비는 얼마인가요?',
     answer: '기본 배송비는 3,000원이며, 50,000원 이상 구매 시 무료배송입니다.\n\n제주 및 도서산간 지역은 추가 배송비가 발생할 수 있습니다.',
     category: 'shipping',
-    order: 1,
   }
   isLoading.value = false
 }
@@ -92,17 +90,11 @@ onMounted(() => {
     <div v-else class="space-y-6">
       <UiCard title="FAQ 정보">
         <div class="space-y-4">
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">분류</label>
-              <select v-model="form.category" class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                <option v-for="opt in categoryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">순서</label>
-              <input v-model.number="form.order" type="number" min="1" class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-            </div>
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">분류</label>
+            <select v-model="form.category" class="w-full md:w-1/2 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <option v-for="opt in categoryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
           </div>
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">질문 <span class="text-error-500">*</span></label>

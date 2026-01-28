@@ -371,10 +371,10 @@ const validateForm = () => {
     return false
   }
 
-  if (!isVariantsGenerated.value || variants.value.length === 0) {
-    uiStore.showToast({ type: 'error', message: '옵션 조합을 생성해주세요.' })
-    return false
-  }
+  // if (!isVariantsGenerated.value || variants.value.length === 0) {
+  //   uiStore.showToast({ type: 'error', message: '옵션 조합을 생성해주세요.' })
+  //   return false
+  // }
 
   const emptySkuVariant = variants.value.find((v) => !v.sku.trim())
   if (emptySkuVariant) {
@@ -531,28 +531,7 @@ const handleSave = async () => {
 
       await $api.patchFormData(`/admin/products/${productId.value}`, formData)
       uiStore.showToast({ type: 'success', message: '상품이 수정되었습니다.' })
-
-      // 원본 데이터를 현재 상태로 갱신 (다음 수정을 위한 변경 감지용)
-      originalData.value = {
-        name: product.value.name,
-        summary: product.value.description,
-        description: product.value.detailContent,
-        status: product.value.status,
-        costPrice: product.value.costPrice,
-        regularPrice: product.value.price,
-        salePrice: discountPrice.value,
-        maxPurchaseQuantity: product.value.maxPurchase,
-        discountType: product.value.hasDiscount ? product.value.discountType : null,
-        discountValue: product.value.hasDiscount ? product.value.discountValue : 0,
-        category: product.value.categoryId ? { id: product.value.categoryId } : null,
-      }
-      originalTagIds.value = [...selectedTagIds.value]
-      originalVariants.value = JSON.parse(JSON.stringify(variants.value))
-      if (mainImage.value?.file) {
-        // 새 이미지 업로드 후 file 제거 (이미 서버에 저장됨)
-        mainImage.value = { preview: mainImage.value.preview, name: mainImage.value.name }
-      }
-      originalMainImage.value = mainImage.value ? { ...mainImage.value } : null
+      router.push('/admin/products')
     } else {
       // 등록: POST - 전체 데이터 전송
       const requestData = buildRequestData()

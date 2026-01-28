@@ -17,10 +17,10 @@ const categoryOptions = [
 ]
 
 const faqs = ref([
-  { id: 1, question: '배송비는 얼마인가요?', category: 'shipping', status: 'published', order: 1 },
-  { id: 2, question: '반품은 어떻게 하나요?', category: 'return', status: 'published', order: 2 },
-  { id: 3, question: '결제 수단은 무엇이 있나요?', category: 'order', status: 'published', order: 3 },
-  { id: 4, question: '회원 탈퇴는 어떻게 하나요?', category: 'member', status: 'draft', order: 4 },
+  { id: 1, question: '배송비는 얼마인가요?', category: 'shipping', status: 'published', answer: '기본 배송비는 3,000원이며, 50,000원 이상 구매 시 무료배송입니다.\n\n제주 및 도서산간 지역은 추가 배송비가 발생할 수 있습니다.', order: 1 },
+  { id: 2, question: '반품은 어떻게 하나요?', category: 'return', status: 'published', answer: '반품은 교환/반품 페이지에서 신청할 수 있습니다.\n\n반품 신청 시 반품 사유, 반품 상품 정보를 입력해주세요.', order: 2 },
+  { id: 3, question: '결제 수단은 무엇이 있나요?', category: 'order', status: 'published', answer: '결제 수단은 카드, 계좌이체, 무통장 입금, 휴대폰 결제 등이 있습니다.\n\n결제 수단은 주문 페이지에서 확인할 수 있습니다.', order: 3 },
+  { id: 4, question: '회원 탈퇴는 어떻게 하나요?', category: 'member', status: 'draft', answer: '회원 탈퇴는 회원 정보 페이지에서 신청할 수 있습니다.\n\n회원 탈퇴 시 회원 정보, 회원 탈퇴 사유를 입력해주세요.', order: 4 },
 ])
 
 const filterCategory = ref('')
@@ -37,10 +37,9 @@ const filteredFaqs = computed(() => {
 })
 
 const tableColumns = [
-  { key: 'order', label: '순서', width: 'w-16' },
+  { key: 'category', label: '분류', width: 'w-24' },
   { key: 'question', label: '질문' },
-  { key: 'category', label: '분류' },
-  { key: 'status', label: '상태' },
+  { key: 'answer', label: '답변' },
 ]
 
 const selectedIds = ref([])

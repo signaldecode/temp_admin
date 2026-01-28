@@ -591,7 +591,7 @@ onMounted(() => {
           <template #header>
             <h3 class="font-semibold text-neutral-900">고객센터 정보</h3>
           </template>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">
                 고객센터 전화번호 <span class="text-error-500">*</span>
@@ -603,17 +603,7 @@ onMounted(() => {
                 placeholder="1588-0000"
               >
             </div>
-            <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">
-                팩스번호
-              </label>
-              <input
-                v-model="info.csFax"
-                type="text"
-                class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="02-0000-0000"
-              >
-            </div>
+            
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">
                 고객센터 이메일

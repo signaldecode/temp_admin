@@ -4,62 +4,95 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { useApi } from '~/composables/useApi'
 import { formatDate } from '~/utils/formatters'
 
 const router = useRouter()
 const uiStore = useUiStore()
+const { get } = useApi()
 
-// 팝업 종류 옵션
-const typeOptions = [
-  { value: 'layer', label: '레이어 모달' },
-  { value: 'fullscreen', label: '풀스크린' },
+// 팝업 타입 옵션
+const popupTypeOptions = [
+  { value: 'CENTER', label: '중앙' },
+  { value: 'FLOATING', label: '플로팅' },
 ]
 
-// 상태 옵션
-const statusOptions = [
-  { value: 'active', label: '노출중', color: 'success' },
-  { value: 'scheduled', label: '예약', color: 'info' },
-  { value: 'ended', label: '종료', color: 'neutral' },
-  { value: 'inactive', label: '비활성', color: 'warning' },
+// 닫기 옵션
+const closeOptions = [
+  { value: 'CLOSE', label: '닫기' },
+  { value: 'TODAY', label: '오늘 하루' },
 ]
 
-// Mock 데이터
-const popups = ref([
-  { id: 1, title: '신년 이벤트 안내', type: 'layer', status: 'active', startDate: '2025-01-01', endDate: '2025-01-31', hasEndDate: true, viewCount: 1250, clickCount: 340 },
-  { id: 2, title: '앱 업데이트 공지', type: 'fullscreen', status: 'active', startDate: '2025-01-05', endDate: '2025-01-15', hasEndDate: true, viewCount: 890, clickCount: 120 },
-  { id: 3, title: '설 연휴 배송 안내', type: 'layer', status: 'scheduled', startDate: '2025-01-20', endDate: '2025-02-05', hasEndDate: true, viewCount: 0, clickCount: 0 },
-  { id: 4, title: '상시 회원가입 혜택', type: 'layer', status: 'active', startDate: '2024-01-01', endDate: null, hasEndDate: false, viewCount: 5420, clickCount: 1890 },
-])
+// 팝업 목록
+const popups = ref([])
+
+// 로딩 상태
+const isLoading = ref(false)
 
 // 필터
-const filterType = ref('')
-const filterStatus = ref('')
+const filterIsActive = ref('')
 const searchKeyword = ref('')
 
-// 필터링된 팝업
+// 페이지네이션
+const currentPage = ref(1)
+const perPage = 20
+const totalItems = ref(0)
+const totalPages = computed(() => Math.ceil(totalItems.value / perPage))
+
+// 팝업 목록 조회 API
+const fetchPopups = async () => {
+  isLoading.value = true
+
+  try {
+    const params = {
+      page: currentPage.value - 1, // API는 0-based
+      size: perPage,
+    }
+
+    // isActive 필터 적용
+    if (filterIsActive.value !== '') {
+      params.isActive = filterIsActive.value === 'true'
+    }
+
+    const response = await get('/admin/popups', params)
+
+    popups.value = response.data.content || []
+    totalItems.value = response.data.total_elements || 0
+    selectedIds.value = []
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '팝업 목록을 불러오는데 실패했습니다.',
+    })
+    popups.value = []
+    totalItems.value = 0
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 프론트 필터링 (keyword는 API에서 지원 안 함)
 const filteredPopups = computed(() => {
   let result = [...popups.value]
-  if (filterType.value) result = result.filter((p) => p.type === filterType.value)
-  if (filterStatus.value) result = result.filter((p) => p.status === filterStatus.value)
   if (searchKeyword.value.trim()) {
     const keyword = searchKeyword.value.toLowerCase()
-    result = result.filter((p) => p.title.toLowerCase().includes(keyword))
+    result = result.filter((p) => p.name?.toLowerCase().includes(keyword))
   }
   return result
 })
 
 // 테이블 컬럼
 const tableColumns = [
-  { key: 'title', label: '팝업명' },
-  { key: 'type', label: '종류' },
+  { key: 'image', label: '이미지', width: 'w-20' },
+  { key: 'name', label: '팝업명' },
+  { key: 'popupType', label: '타입' },
   { key: 'period', label: '노출기간' },
-  { key: 'stats', label: '통계' },
   { key: 'status', label: '상태' },
 ]
 
 // 벌크 선택
 const selectedIds = ref([])
-const handleSelectAll = (selectAll) => { selectedIds.value = selectAll ? paginatedPopups.value.map((p) => p.id) : [] }
+const handleSelectAll = (selectAll) => { selectedIds.value = selectAll ? filteredPopups.value.map((p) => p.id) : [] }
 const handleSelect = (id) => {
   const idx = selectedIds.value.indexOf(id)
   idx > -1 ? selectedIds.value.splice(idx, 1) : selectedIds.value.push(id)
@@ -75,35 +108,44 @@ const bulkDelete = () => {
 
 const bulkChangeStatus = (status) => {
   if (!selectedIds.value.length) return
-  popups.value = popups.value.map((p) => selectedIds.value.includes(p.id) ? { ...p, status } : p)
+  popups.value = popups.value.map((p) => selectedIds.value.includes(p.id) ? { ...p, isActive: status } : p)
   selectedIds.value = []
   uiStore.showToast({ type: 'success', message: '상태가 변경되었습니다.' })
 }
 
 // 헬퍼
-const getStatusBadge = (status) => statusOptions.find((s) => s.value === status) || statusOptions[3]
-const getTypeLabel = (type) => typeOptions.find((t) => t.value === type)?.label || type
+const getStatusBadge = (isActive) => {
+  return isActive
+    ? { label: '활성', color: 'success' }
+    : { label: '비활성', color: 'warning' }
+}
+const getPopupTypeLabel = (type) => popupTypeOptions.find((t) => t.value === type)?.label || type || '-'
 
 // 페이지 이동
 const goToCreate = () => router.push('/admin/contents/popups/new')
 const goToDetail = (popup) => router.push(`/admin/contents/popups/${popup.id}`)
 
 // 검색
-const handleSearch = () => { currentPage.value = 1 }
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchPopups()
+}
 const handleReset = () => {
-  filterType.value = ''
-  filterStatus.value = ''
+  filterIsActive.value = ''
   searchKeyword.value = ''
   currentPage.value = 1
+  fetchPopups()
 }
 
-// 페이지네이션
-const currentPage = ref(1)
-const perPage = 30
-const totalPages = computed(() => Math.ceil(filteredPopups.value.length / perPage))
-const paginatedPopups = computed(() => {
-  const start = (currentPage.value - 1) * perPage
-  return filteredPopups.value.slice(start, start + perPage)
+// 페이지 변경
+const handlePageChange = (page) => {
+  currentPage.value = page
+  fetchPopups()
+}
+
+// 초기 로드
+onMounted(() => {
+  fetchPopups()
 })
 </script>
 
@@ -121,32 +163,35 @@ const paginatedPopups = computed(() => {
     <template #filters>
       <DomainFilterCard @search="handleSearch" @reset="handleReset">
         <template #selects>
-          <select v-model="filterType" class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-            <option value="">종류 전체</option>
-            <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
-          <select v-model="filterStatus" class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          <select v-model="filterIsActive" class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
             <option value="">상태 전체</option>
-            <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            <option value="true">활성</option>
+            <option value="false">비활성</option>
           </select>
         </template>
         <template #search>
-          <input v-model="searchKeyword" type="text" placeholder="제목으로 검색" class="flex-1 min-w-0 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" @keyup.enter="handleSearch">
+          <input v-model="searchKeyword" type="text" placeholder="팝업명으로 검색" class="flex-1 min-w-0 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" @keyup.enter="handleSearch">
         </template>
       </DomainFilterCard>
     </template>
 
     <template #bulk>
       <DomainBulkActionBar :count="selectedIds.length" :show="selectedIds.length > 0">
-        <UiButton variant="outline" size="sm" @click="bulkChangeStatus('active')">노출</UiButton>
-        <UiButton variant="outline" size="sm" @click="bulkChangeStatus('inactive')">비활성</UiButton>
+        <UiButton variant="outline" size="sm" @click="bulkChangeStatus(true)">활성</UiButton>
+        <UiButton variant="outline" size="sm" @click="bulkChangeStatus(false)">비활성</UiButton>
         <UiButton variant="danger" size="sm" @click="bulkDelete">삭제</UiButton>
       </DomainBulkActionBar>
     </template>
 
+    <!-- 로딩 -->
+    <div v-if="isLoading" class="flex-1 flex items-center justify-center bg-white rounded-lg border border-neutral-200">
+      <UiSpinner size="lg" />
+    </div>
+
     <DomainDataTable
+      v-else
       :columns="tableColumns"
-      :items="paginatedPopups"
+      :items="filteredPopups"
       :selected-ids="selectedIds"
       selectable
       empty-title="등록된 팝업이 없습니다"
@@ -155,46 +200,69 @@ const paginatedPopups = computed(() => {
       @select-all="handleSelectAll"
       @row-click="goToDetail"
     >
-      <template #cell-title="{ item }">
-        <p class="text-sm font-medium text-neutral-900">{{ item.title }}</p>
+      <template #cell-image="{ item }">
+        <div class="w-16 h-10 bg-neutral-100 rounded overflow-hidden flex-shrink-0">
+          <img
+            v-if="item.image"
+            :src="item.image"
+            :alt="item.name"
+            class="w-full h-full object-cover"
+          >
+          <div v-else class="w-full h-full flex items-center justify-center text-neutral-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+        </div>
       </template>
 
-      <template #cell-type="{ item }">
-        <span class="text-sm text-neutral-600">{{ getTypeLabel(item.type) }}</span>
+      <template #cell-name="{ item }">
+        <p class="text-sm font-medium text-neutral-900">{{ item.name || '-' }}</p>
+      </template>
+
+      <template #cell-popupType="{ item }">
+        <span class="text-sm text-neutral-600">{{ getPopupTypeLabel(item.popupType) }}</span>
       </template>
 
       <template #cell-period="{ item }">
         <div class="text-sm text-neutral-600">
-          <p>{{ formatDate(item.startDate) }}</p>
-          <p class="text-xs text-neutral-400">~ {{ item.hasEndDate ? formatDate(item.endDate) : '종료일 없음' }}</p>
-        </div>
-      </template>
-
-      <template #cell-stats="{ item }">
-        <div class="text-sm text-neutral-600">
-          <p>노출 {{ item.viewCount.toLocaleString() }}</p>
-          <p class="text-xs text-neutral-400">클릭 {{ item.clickCount.toLocaleString() }}</p>
+          <p>{{ item.startedAt ? formatDate(item.startedAt) : '-' }}</p>
+          <p class="text-xs text-neutral-400">~ {{ item.endedAt ? formatDate(item.endedAt) : '종료일 없음' }}</p>
         </div>
       </template>
 
       <template #cell-status="{ item }">
-        <UiBadge :variant="getStatusBadge(item.status).color" size="sm">{{ getStatusBadge(item.status).label }}</UiBadge>
+        <UiBadge :variant="getStatusBadge(item.isActive).color" size="sm">{{ getStatusBadge(item.isActive).label }}</UiBadge>
       </template>
 
       <template #mobile-card="{ item }">
-        <div class="flex items-center justify-between mb-1">
-          <p class="text-sm font-medium text-neutral-900 truncate flex-1">{{ item.title }}</p>
-          <UiBadge :variant="getStatusBadge(item.status).color" size="sm">{{ getStatusBadge(item.status).label }}</UiBadge>
-        </div>
-        <div class="flex items-center gap-4 text-xs text-neutral-400">
-          <span>{{ getTypeLabel(item.type) }}</span>
-          <span>{{ formatDate(item.startDate) }} ~</span>
+        <div class="flex gap-3">
+          <div class="w-14 h-10 bg-neutral-100 rounded overflow-hidden flex-shrink-0">
+            <img v-if="item.image" :src="item.image" :alt="item.name" class="w-full h-full object-cover">
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-sm font-medium text-neutral-900 truncate">{{ item.name || '-' }}</p>
+              <UiBadge :variant="getStatusBadge(item.isActive).color" size="sm">{{ getStatusBadge(item.isActive).label }}</UiBadge>
+            </div>
+            <div class="flex items-center gap-4 text-xs text-neutral-400">
+              <span>{{ getPopupTypeLabel(item.popupType) }}</span>
+              <span>{{ item.startedAt ? formatDate(item.startedAt) : '-' }} ~</span>
+            </div>
+          </div>
         </div>
       </template>
     </DomainDataTable>
 
     <template #pagination>
-      <UiPagination v-model:currentPage="currentPage" :total-pages="totalPages" :total-items="filteredPopups.length" :per-page="perPage" />
+      <UiPagination
+        v-if="totalPages > 0 && !isLoading"
+        v-model:current-page="currentPage"
+        :total-pages="totalPages"
+        :total-items="totalItems"
+        :per-page="perPage"
+        @change="handlePageChange"
+      />
     </template>
   </LayoutListPage>
 </template>

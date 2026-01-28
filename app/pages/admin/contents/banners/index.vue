@@ -4,119 +4,87 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { useApi } from '~/composables/useApi'
 import { formatDate } from '~/utils/formatters'
 
 const router = useRouter()
 const uiStore = useUiStore()
+const { get, del, patch } = useApi()
 
-// 배너 위치 옵션
+// 배너 위치 옵션 (API 스펙에 맞춤)
 const positionOptions = [
-  { value: 'main_top', label: '메인 상단' },
-  { value: 'main_middle', label: '메인 중단' },
-  { value: 'main_bottom', label: '메인 하단' },
-  { value: 'category', label: '카테고리 페이지' },
-  { value: 'product', label: '상품 상세' },
+  { value: 'HERO', label: '히어로' },
+  { value: 'SLIDE', label: '슬라이드' },
+  { value: 'HALF', label: '하프' },
+  { value: 'FULL', label: '풀' },
 ]
 
-// 상태 옵션
+// 상태 옵션 (API 스펙에 맞춤)
 const statusOptions = [
-  { value: 'active', label: '노출중', color: 'success' },
-  { value: 'scheduled', label: '예약', color: 'info' },
-  { value: 'ended', label: '종료', color: 'neutral' },
-  { value: 'inactive', label: '비활성', color: 'warning' },
+  { value: 'ACTIVE', label: '노출중', color: 'success' },
+  { value: 'SCHEDULED', label: '예약', color: 'info' },
+  { value: 'INACTIVE', label: '비활성', color: 'warning' },
 ]
 
-// Mock 배너 데이터
-const banners = ref([
-  {
-    id: 1,
-    title: '신년 세일 배너',
-    position: 'main_top',
-    status: 'active',
-    startDate: '2025-01-01',
-    endDate: '2025-01-31',
-    hasEndDate: true,
-    order: 1,
-    clickCount: 2450,
-  },
-  {
-    id: 2,
-    title: '겨울 신상품',
-    position: 'main_top',
-    status: 'active',
-    startDate: '2024-12-01',
-    endDate: '2025-02-28',
-    hasEndDate: true,
-    order: 2,
-    clickCount: 1890,
-  },
-  {
-    id: 3,
-    title: '회원가입 이벤트',
-    position: 'main_middle',
-    status: 'active',
-    startDate: '2025-01-01',
-    endDate: null,
-    hasEndDate: false,
-    order: 1,
-    clickCount: 560,
-  },
-  {
-    id: 4,
-    title: '앱 다운로드',
-    position: 'main_bottom',
-    status: 'active',
-    startDate: '2024-01-01',
-    endDate: null,
-    hasEndDate: false,
-    order: 1,
-    clickCount: 890,
-  },
-  {
-    id: 5,
-    title: '설 연휴 기획전',
-    position: 'main_top',
-    status: 'scheduled',
-    startDate: '2025-01-20',
-    endDate: '2025-02-05',
-    hasEndDate: true,
-    order: 3,
-    clickCount: 0,
-  },
-])
+// 배너 목록
+const banners = ref([])
+
+// 로딩 상태
+const isLoading = ref(false)
 
 // 필터
 const filterPosition = ref('')
 const filterStatus = ref('')
 const searchKeyword = ref('')
 
-// 필터링된 배너
-const filteredBanners = computed(() => {
-  let result = [...banners.value]
+// 페이지네이션
+const currentPage = ref(1)
+const perPage = 30
+const totalItems = ref(0)
+const totalPages = computed(() => Math.ceil(totalItems.value / perPage))
 
-  if (filterPosition.value) {
-    result = result.filter((b) => b.position === filterPosition.value)
+// 배너 목록 조회 API
+const fetchBanners = async () => {
+  isLoading.value = true
+
+  try {
+    const params = {
+      page: currentPage.value - 1, // API는 0부터 시작
+      size: perPage,
+    }
+
+    if (filterPosition.value) {
+      params.position = filterPosition.value
+    }
+    if (filterStatus.value) {
+      params.status = filterStatus.value
+    }
+
+    const response = await get('/admin/banners', params)
+
+    banners.value = response.data.content
+    totalItems.value = response.data.total_elements
+
+    // 페이지 변경 시 선택 초기화
+    selectedIds.value = []
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '배너 목록을 불러오는데 실패했습니다.',
+    })
+    banners.value = []
+    totalItems.value = 0
+  } finally {
+    isLoading.value = false
   }
-
-  if (filterStatus.value) {
-    result = result.filter((b) => b.status === filterStatus.value)
-  }
-
-  if (searchKeyword.value.trim()) {
-    const keyword = searchKeyword.value.toLowerCase()
-    result = result.filter((b) => b.title.toLowerCase().includes(keyword))
-  }
-
-  return result.sort((a, b) => a.order - b.order)
-})
+}
 
 // 테이블 컬럼
 const tableColumns = [
-  { key: 'order', label: '순서', width: 'w-12' },
+  { key: 'sortOrder', label: '순서', width: 'w-12' },
   { key: 'info', label: '배너정보' },
   { key: 'position', label: '위치' },
   { key: 'period', label: '노출기간' },
-  { key: 'clickCount', label: '클릭수' },
   { key: 'status', label: '상태' },
 ]
 
@@ -124,7 +92,7 @@ const tableColumns = [
 const selectedIds = ref([])
 
 const handleSelectAll = (selectAll) => {
-  selectedIds.value = selectAll ? paginatedBanners.value.map((b) => b.id) : []
+  selectedIds.value = selectAll ? banners.value.map((b) => b.id) : []
 }
 
 const handleSelect = (id) => {
@@ -133,27 +101,50 @@ const handleSelect = (id) => {
 }
 
 // 벌크 삭제
-const bulkDelete = () => {
+const bulkDelete = async () => {
   if (selectedIds.value.length === 0) return
   if (!confirm(`선택한 ${selectedIds.value.length}개의 배너를 삭제하시겠습니까?`)) return
 
-  banners.value = banners.value.filter((b) => !selectedIds.value.includes(b.id))
-  selectedIds.value = []
-  uiStore.showToast({ type: 'success', message: '선택한 배너가 삭제되었습니다.' })
+  try {
+    // 개별 삭제 API 순차 호출
+    await Promise.all(
+      selectedIds.value.map((id) => del(`/admin/banners/${id}`))
+    )
+
+    uiStore.showToast({ type: 'success', message: '선택한 배너가 삭제되었습니다.' })
+    selectedIds.value = []
+    fetchBanners()
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '삭제에 실패했습니다.',
+    })
+  }
 }
 
 // 벌크 상태 변경
-const bulkChangeStatus = (status) => {
+const bulkChangeStatus = async (status) => {
   if (selectedIds.value.length === 0) return
-  banners.value = banners.value.map((b) =>
-    selectedIds.value.includes(b.id) ? { ...b, status } : b
-  )
-  selectedIds.value = []
-  uiStore.showToast({ type: 'success', message: '상태가 변경되었습니다.' })
+
+  try {
+    // 개별 상태 변경 API 순차 호출
+    await Promise.all(
+      selectedIds.value.map((id) => patch(`/admin/banners/${id}`, { status }))
+    )
+
+    uiStore.showToast({ type: 'success', message: '상태가 변경되었습니다.' })
+    selectedIds.value = []
+    fetchBanners()
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '상태 변경에 실패했습니다.',
+    })
+  }
 }
 
 // 헬퍼 함수
-const getStatusBadge = (status) => statusOptions.find((s) => s.value === status) || statusOptions[3]
+const getStatusBadge = (status) => statusOptions.find((s) => s.value === status) || { label: status, color: 'neutral' }
 const getPositionLabel = (position) => positionOptions.find((p) => p.value === position)?.label || position
 
 // 페이지 이동
@@ -161,21 +152,28 @@ const goToCreate = () => router.push('/admin/contents/banners/new')
 const goToDetail = (banner) => router.push(`/admin/contents/banners/${banner.id}`)
 
 // 검색
-const handleSearch = () => { currentPage.value = 1 }
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchBanners()
+}
+
 const handleReset = () => {
   filterPosition.value = ''
   filterStatus.value = ''
   searchKeyword.value = ''
   currentPage.value = 1
+  fetchBanners()
 }
 
-// 페이지네이션
-const currentPage = ref(1)
-const perPage = 30
-const totalPages = computed(() => Math.ceil(filteredBanners.value.length / perPage))
-const paginatedBanners = computed(() => {
-  const start = (currentPage.value - 1) * perPage
-  return filteredBanners.value.slice(start, start + perPage)
+// 페이지 변경
+const handlePageChange = (page) => {
+  currentPage.value = page
+  fetchBanners()
+}
+
+// 초기 로드
+onMounted(() => {
+  fetchBanners()
 })
 </script>
 
@@ -216,15 +214,21 @@ const paginatedBanners = computed(() => {
 
     <template #bulk>
       <DomainBulkActionBar :count="selectedIds.length" :show="selectedIds.length > 0">
-        <UiButton variant="outline" size="sm" @click="bulkChangeStatus('active')">노출</UiButton>
-        <UiButton variant="outline" size="sm" @click="bulkChangeStatus('inactive')">비활성</UiButton>
+        <UiButton variant="outline" size="sm" @click="bulkChangeStatus('ACTIVE')">노출</UiButton>
+        <UiButton variant="outline" size="sm" @click="bulkChangeStatus('INACTIVE')">비활성</UiButton>
         <UiButton variant="danger" size="sm" @click="bulkDelete">삭제</UiButton>
       </DomainBulkActionBar>
     </template>
 
+    <!-- 로딩 -->
+    <div v-if="isLoading" class="flex-1 flex items-center justify-center bg-white rounded-lg border border-neutral-200">
+      <UiSpinner size="lg" />
+    </div>
+
     <DomainDataTable
+      v-else
       :columns="tableColumns"
-      :items="paginatedBanners"
+      :items="banners"
       :selected-ids="selectedIds"
       selectable
       empty-title="등록된 배너가 없습니다"
@@ -233,16 +237,24 @@ const paginatedBanners = computed(() => {
       @select-all="handleSelectAll"
       @row-click="goToDetail"
     >
-      <template #cell-order="{ item }">
-        <span class="w-6 h-6 flex items-center justify-center bg-neutral-100 rounded text-xs font-medium text-neutral-600">{{ item.order }}</span>
+      <template #cell-sortOrder="{ item }">
+        <span class="w-6 h-6 flex items-center justify-center bg-neutral-100 rounded text-xs font-medium text-neutral-600">{{ item.sortOrder }}</span>
       </template>
 
       <template #cell-info="{ item }">
         <div class="flex items-center gap-3">
-          <div class="w-24 h-14 bg-neutral-100 rounded overflow-hidden flex-shrink-0 flex items-center justify-center text-neutral-400">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
+          <div class="w-24 h-14 bg-neutral-100 rounded overflow-hidden flex-shrink-0">
+            <img
+              v-if="item.imageUrl"
+              :src="item.imageUrl"
+              :alt="item.title"
+              class="w-full h-full object-cover"
+            >
+            <div v-else class="w-full h-full flex items-center justify-center text-neutral-400">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
           </div>
           <p class="text-sm font-medium text-neutral-900 truncate">{{ item.title }}</p>
         </div>
@@ -254,13 +266,9 @@ const paginatedBanners = computed(() => {
 
       <template #cell-period="{ item }">
         <div class="text-sm text-neutral-600">
-          <p>{{ formatDate(item.startDate) }}</p>
-          <p class="text-xs text-neutral-400">~ {{ item.hasEndDate ? formatDate(item.endDate) : '종료일 없음' }}</p>
+          <p>{{ formatDate(item.startedAt) }}</p>
+          <p class="text-xs text-neutral-400">~ {{ item.noEndDate ? '종료일 없음' : formatDate(item.endedAt) }}</p>
         </div>
-      </template>
-
-      <template #cell-clickCount="{ item }">
-        <span class="text-sm text-neutral-600">{{ item.clickCount.toLocaleString() }}</span>
       </template>
 
       <template #cell-status="{ item }">
@@ -269,19 +277,26 @@ const paginatedBanners = computed(() => {
 
       <template #mobile-card="{ item }">
         <div class="flex items-center gap-2 mb-1">
-          <span class="w-5 h-5 flex items-center justify-center bg-neutral-100 rounded text-xs font-medium text-neutral-600">{{ item.order }}</span>
+          <span class="w-5 h-5 flex items-center justify-center bg-neutral-100 rounded text-xs font-medium text-neutral-600">{{ item.sortOrder }}</span>
           <p class="text-sm font-medium text-neutral-900 truncate flex-1">{{ item.title }}</p>
           <UiBadge :variant="getStatusBadge(item.status).color" size="sm">{{ getStatusBadge(item.status).label }}</UiBadge>
         </div>
         <div class="flex items-center gap-4 text-xs text-neutral-400">
           <span>{{ getPositionLabel(item.position) }}</span>
-          <span>{{ formatDate(item.startDate) }} ~</span>
+          <span>{{ formatDate(item.startedAt) }} ~</span>
         </div>
       </template>
     </DomainDataTable>
 
     <template #pagination>
-      <UiPagination v-model:currentPage="currentPage" :total-pages="totalPages" :total-items="filteredBanners.length" :per-page="perPage" />
+      <UiPagination
+        v-if="totalPages > 0 && !isLoading"
+        v-model:current-page="currentPage"
+        :total-pages="totalPages"
+        :total-items="totalItems"
+        :per-page="perPage"
+        @change="handlePageChange"
+      />
     </template>
   </LayoutListPage>
 </template>
