@@ -46,7 +46,7 @@ const product = ref({
   discountType: 'RATE', // 'RATE' = 퍼센트, 'AMOUNT' = 금액
   discountValue: 0,
   maxPurchase: 10,
-  status: 'active',
+  status: 'ON_SALE',
 })
 
 // 선택된 태그 ID 목록
