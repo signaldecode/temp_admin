@@ -424,7 +424,7 @@ const buildRequestData = () => {
     costPrice: product.value.costPrice,
     regularPrice: product.value.price,
     salePrice: discountPrice.value,
-    maxPurchaseQuantity: product.value.maxPurchase,
+    maxPurchaseQuantity: product.value.maxPurchaseQuantity,
     discountType: product.value.hasDiscount ? product.value.discountType : null,
     discountValue: product.value.hasDiscount ? product.value.discountValue : 0,
     categoryId: product.value.categoryId || null,
@@ -458,7 +458,7 @@ const buildPatchData = () => {
   if (product.value.costPrice !== orig.costPrice) changes.costPrice = product.value.costPrice
   if (product.value.price !== orig.regularPrice) changes.regularPrice = product.value.price
   if (discountPrice.value !== orig.salePrice) changes.salePrice = discountPrice.value
-  if (product.value.maxPurchase !== orig.maxPurchaseQuantity) changes.maxPurchaseQuantity = product.value.maxPurchase
+  if (product.value.maxPurchaseQuantity !== orig.maxPurchaseQuantity) changes.maxPurchaseQuantity = product.value.maxPurchase
 
   // 할인 관련
   const currentDiscountType = product.value.hasDiscount ? product.value.discountType : null
@@ -597,16 +597,18 @@ const fetchProduct = async () => {
     // 백엔드 응답 데이터를 현재 product 구조에 매핑
     product.value = {
       name: data.name || '',
-      costPrice: data.costPrice || 0,
+      costPrice: data.costPrice ?? 0,
       description: data.summary || '',
       detailContent: data.description || '', // HTML 콘텐츠
       categoryId: data.category?.id || '',
-      price: data.regularPrice || 0, // 정가
-      hasDiscount: (data.discountValue || 0) > 0,
+      price: data.regularPrice ?? 0, // 정가
+      hasDiscount: (data.discountValue ?? 0) > 0,
       discountType: data.discountType || 'percent',
-      discountValue: data.discountValue || 0,
-      maxPurchase: data.maxPurchaseQuantity || 10,
+      discountValue: data.discountValue ?? 0,
+      maxPurchase: data.maxPurchaseQuantity ?? 10,
       status: data.status || 'ON_SALE',
+
+      
     }
 
     // 태그 ID 목록 설정 (API 응답의 tags 배열에서 id 추출)
@@ -672,8 +674,8 @@ const fetchProduct = async () => {
           options,
           optionLabel,
           sku: variant.sku || '',
-          stock: variant.stockQuantity || 0,
-          additionalPrice: variant.additionalPrice || 0,
+          stock: variant.stockQuantity ?? 0,
+          additionalPrice: variant.additionalPrice ?? 0,
           images: variant.images || [],
         }
       })
