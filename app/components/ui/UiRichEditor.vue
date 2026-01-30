@@ -10,6 +10,7 @@
  * - 링크
  */
 
+import { useUiStore } from '~/stores/ui'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
@@ -45,7 +46,7 @@ const editor = useEditor({
     }),
     Image.configure({
       inline: false,
-      allowBase64: true,
+      allowBase64: false,
     }),
     TextAlign.configure({
       types: ['heading', 'paragraph'],
@@ -65,25 +66,65 @@ const editor = useEditor({
 
 // 이미지 업로드 핸들러
 const imageInputRef = ref(null)
+const isUploading = ref(false)
 
-const handleImageUpload = (event) => {
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+
+const handleImageUpload = async (event) => {
   const file = event.target.files?.[0]
   if (!file) return
 
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const url = e.target?.result
-    if (url && editor.value) {
-      editor.value.chain().focus().setImage({ src: url }).run()
-    }
+  // 파일 유효성 검사
+  if (!ALLOWED_TYPES.includes(file.type)) {
+    const uiStore = useUiStore()
+    uiStore.showToast({ type: 'error', message: '허용되지 않는 파일 형식입니다. (JPEG, PNG, GIF, WebP만 허용)' })
+    event.target.value = ''
+    return
   }
-  reader.readAsDataURL(file)
 
-  // 입력 초기화
-  event.target.value = ''
+  if (file.size > MAX_FILE_SIZE) {
+    const uiStore = useUiStore()
+    uiStore.showToast({ type: 'error', message: '파일 크기가 10MB를 초과합니다.' })
+    event.target.value = ''
+    return
+  }
+
+  isUploading.value = true
+
+  try {
+    const { $api } = useNuxtApp()
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await $api.postFormData('/admin/images', formData)
+    const imageUrl = response.data?.url
+
+    if (imageUrl && editor.value) {
+      editor.value
+        .chain()
+        .focus()
+        .insertContent({
+          type: 'image',
+          attrs: { src: imageUrl },
+        })
+        .createParagraphNear()
+        .run()
+    }
+  } catch (err) {
+    const uiStore = useUiStore()
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.error?.message || '이미지 업로드에 실패했습니다.',
+    })
+  } finally {
+    isUploading.value = false
+    event.target.value = ''
+  }
 }
 
 const triggerImageUpload = () => {
+  if (isUploading.value) return
   imageInputRef.value?.click()
 }
 
@@ -209,9 +250,10 @@ const toolbarGroups = computed(() => {
       buttons: [
         {
           icon: 'image',
-          title: '이미지',
+          title: isUploading.value ? '업로드 중...' : '이미지',
           action: triggerImageUpload,
           isActive: false,
+          disabled: isUploading.value,
         },
         {
           icon: 'link',
@@ -278,7 +320,7 @@ onBeforeUnmount(() => {
     <input
       ref="imageInputRef"
       type="file"
-      accept="image/*"
+      accept="image/jpeg,image/png,image/gif,image/webp"
       class="hidden"
       @change="handleImageUpload"
     >
