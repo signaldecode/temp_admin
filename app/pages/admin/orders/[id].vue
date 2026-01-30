@@ -23,6 +23,7 @@ const orderId = computed(() => route.params.id)
 const isLoading = ref(true)
 const error = ref(null)
 const isChangingStatus = ref(false)
+const isRefreshingDelivery = ref(false)
 
 // 주문 정보
 const order = ref(null)
@@ -308,6 +309,36 @@ const executeStatusChange = async () => {
   }
 }
 
+// 배송 정보 갱신
+const refreshDelivery = async () => {
+  isRefreshingDelivery.value = true
+
+  try {
+    await $api.post(`/admin/delivery/track/order/${orderId.value}/refresh`)
+
+    uiStore.showToast({
+      type: 'success',
+      message: '배송 정보가 갱신되었습니다.',
+    })
+
+    // 주문 정보 새로고침
+    await fetchOrder()
+  } catch (err) {
+    console.error('Delivery refresh error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || err.message || '배송 정보 갱신에 실패했습니다.',
+    })
+  } finally {
+    isRefreshingDelivery.value = false
+  }
+}
+
+// 배송 정보 갱신 버튼 표시 여부 (배송중/배송완료 상태에서만)
+const canRefreshDelivery = computed(() => {
+  return ['SHIPPING', 'DELIVERED'].includes(order.value?.status)
+})
+
 // 초기 로드
 onMounted(() => {
   fetchOrder()
@@ -418,13 +449,28 @@ onMounted(() => {
           <template #header>
             <div class="flex items-center justify-between">
               <h3 class="font-semibold text-neutral-900">배송지 정보</h3>
-              <UiButton
-                variant="primary"
-                size="sm"
-                @click="openStatusModal"
-              >
-                상태 변경
-              </UiButton>
+              <div class="flex items-center gap-2">
+                <UiButton
+                  v-if="canRefreshDelivery"
+                  variant="outline"
+                  size="sm"
+                  :loading="isRefreshingDelivery"
+                  title="배송 정보 갱신"
+                  @click="refreshDelivery"
+                >
+                  <svg class="w-4 h-4 md:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span class="hidden md:inline">배송 갱신</span>
+                </UiButton>
+                <UiButton
+                  variant="primary"
+                  size="sm"
+                  @click="openStatusModal"
+                >
+                  상태 변경
+                </UiButton>
+              </div>
             </div>
           </template>
           <UiDescriptionList :items="shippingInfoItems">
