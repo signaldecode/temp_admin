@@ -14,8 +14,14 @@ const route = useRoute()
 // 드로어 상태
 const isOpen = computed(() => uiStore.drawer.isOpen)
 
-// 현재 활성 메뉴 체크
+// 현재 활성 메뉴 체크 (클레임에서 진입한 주문 상세는 교환/반품/취소 메뉴 활성화)
 const isActive = (path) => {
+  if (route.query.from === 'claims' && path === '/admin/orders/claims') {
+    return true
+  }
+  if (route.query.from === 'claims' && path === '/admin/orders') {
+    return false
+  }
   if (path === '/admin') {
     return route.path === '/admin'
   }

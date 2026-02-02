@@ -44,8 +44,13 @@ const findMatchingMenuPath = (currentPath) => {
   return null
 }
 
-// 현재 활성 메뉴 경로
-const activeMenuPath = computed(() => findMatchingMenuPath(route.path))
+// 현재 활성 메뉴 경로 (클레임에서 진입한 주문 상세는 교환/반품/취소 메뉴 활성화)
+const activeMenuPath = computed(() => {
+  if (route.query.from === 'claims') {
+    return '/admin/orders/claims'
+  }
+  return findMatchingMenuPath(route.path)
+})
 
 // 메뉴 아이템이 활성 상태인지 체크
 const isActive = (path) => {

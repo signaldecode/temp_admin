@@ -25,8 +25,8 @@ const statusOptions = [
 const typeOptions = [
   { value: 'NOTICE', label: '공지' },
   { value: 'EVENT', label: '이벤트' },
-  { value: 'INFO', label: '안내' },
-  { value: 'MAINTENANCE', label: '점검' },
+  { value: 'GUIDELINES', label: '안내' },
+  { value: 'INSPECTION', label: '점검' },
 ]
 
 // 공지사항 목록
