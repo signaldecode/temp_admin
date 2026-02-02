@@ -1,7 +1,7 @@
 <script setup>
 /**
- * 교환/반품/취소 페이지
- * - 교환요청, 반품요청, 취소 상태 주문만 표시
+ * 교환/반품 페이지
+ * - 교환요청, 반품요청 상태 주문만 표시
  * - 벌크 선택 + 상태 변경
  */
 import { formatCurrency, formatDate } from '~/utils/formatters'
@@ -10,7 +10,7 @@ import { useUiStore } from '~/stores/ui'
 const router = useRouter()
 
 // 검색 필터
-const filterType = ref('')      // 유형 필터 (교환/반품/취소)
+const filterType = ref('')      // 유형 필터 (교환/반품)
 const filterStatus = ref('')    // 상태 필터 (요청/승인/완료 등)
 const searchType = ref('orderNo')
 const searchKeyword = ref('')
@@ -23,26 +23,19 @@ const searchOptions = [
 
 // 유형에 따른 상태 필터 옵션
 const statusFilterOptions = computed(() => {
-  if (filterType.value === 'EXCHANGE') {
-    return [
-      { value: 'REQUESTED', label: '요청' },
-      { value: 'APPROVED', label: '승인' },
-      { value: 'IN_PROGRESS', label: '진행중' },
-      { value: 'COMPLETED', label: '완료' },
-    ]
-  }
-  if (filterType.value === 'RETURN') {
-    return [
-      { value: 'REQUESTED', label: '요청' },
-      { value: 'APPROVED', label: '승인' },
-      { value: 'IN_PROGRESS', label: '진행중' },
-      { value: 'COMPLETED', label: '완료' },
-    ]
-  }
   if (filterType.value === 'CANCEL') {
     return [
       { value: 'REQUESTED', label: '요청' },
       { value: 'APPROVED', label: '승인' },
+      { value: 'COMPLETED', label: '완료' },
+      { value: 'REJECTED', label: '거절' },
+    ]
+  }
+  if (filterType.value === 'EXCHANGE' || filterType.value === 'RETURN') {
+    return [
+      { value: 'REQUESTED', label: '요청' },
+      { value: 'APPROVED', label: '승인' },
+      { value: 'IN_PROGRESS', label: '진행중' },
       { value: 'COMPLETED', label: '완료' },
       { value: 'REJECTED', label: '거절' },
     ]
@@ -84,7 +77,6 @@ const selectedStatus = ref('')
 
 // 클레임 상태 옵션 (백엔드 상태값)
 const claimStatusOptions = [
-  { value: 'REQUESTED', label: '요청' },
   { value: 'APPROVED', label: '승인' },
   { value: 'IN_PROGRESS', label: '진행중' },
   { value: 'COMPLETED', label: '완료' },
@@ -105,15 +97,16 @@ const reasonTypeMap = {
   DEFECTIVE: '불량',
   WRONG_DELIVERY: '오배송',
   DELAYED_DELIVERY: '배송지연',
-  CHANGE_OF_MIND: '마음변경',
+  CHANGE_OF_MIND: '단순변심',
   INCOMPATIBILITY: '호환성문제',
+  OTHER: '기타'
 }
 
 // 클레임 타입 매핑
 const claimTypeMap = {
+  CANCEL: '취소',
   EXCHANGE: '교환',
   RETURN: '반품',
-  CANCEL: '취소',
 }
 
 // 조합된 상태 라벨 반환 함수
@@ -125,9 +118,9 @@ const getCombinedStatusLabel = (claimType, status) => {
 
 // 클레임 유형 필터 옵션
 const claimTypeOptions = [
+  { value: 'CANCEL', label: '취소' },
   { value: 'EXCHANGE', label: '교환' },
   { value: 'RETURN', label: '반품' },
-  { value: 'CANCEL', label: '취소' },
 ]
 
 const fetchOrders = async () => {
@@ -208,7 +201,7 @@ const tableColumns = [
 // 전체 선택/해제
 const handleSelectAll = (selectAll) => {
   if (selectAll) {
-    selectedIds.value = orders.value.map((o) => o.id)
+    selectedIds.value = orders.value.map((o) => o.claimId)
   } else {
     selectedIds.value = []
   }
@@ -254,9 +247,12 @@ const handleStatusChange = async () => {
   })
 }
 
-// 주문 상세로 이동
-const goToDetail = (orderId) => {
-  router.push(`/admin/orders/${orderId}`)
+// 주문 상세로 이동 (클레임에서 진입했음을 표시)
+const goToDetail = (item) => {
+  router.push({
+    path: `/admin/orders/${item.orderId}`,
+    query: { from: 'claims', claimId: item.claimId, claimType: item.claimType, claimStatus: item.status },
+  })
 }
 
 // 초기 로드
@@ -348,11 +344,12 @@ onMounted(() => {
       :items="orders"
       :selected-ids="selectedIds"
       selectable
+      id-key="claimId"
       empty-title="검색 결과가 없습니다"
       empty-description="다른 검색어로 다시 시도해보세요."
       @select="handleSelect"
       @select-all="handleSelectAll"
-      @row-click="(order) => goToDetail(order.orderId)"
+      @row-click="(item) => goToDetail(item)"
     >
       <!-- 주문번호 -->
       <template #cell-orderNumber="{ item }">

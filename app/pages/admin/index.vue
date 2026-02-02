@@ -15,7 +15,7 @@ const error = ref(null)
 
 // 주문 현황 데이터
 const orderStats = ref([
-  { id: 'new', label: '신규주문', value: 0, color: 'primary', to: '/admin/orders?status=PENDING' },
+  { id: 'new', label: '신규주문', value: 0, color: 'primary', to: '/admin/orders?status=PAID' },
   { id: 'ready', label: '배송준비', value: 0, color: 'warning', to: '/admin/orders?status=PREPARING' },
   { id: 'shipping', label: '배송중', value: 0, color: 'info', to: '/admin/orders?status=SHIPPING' },
   { id: 'delivered', label: '배송완료', value: 0, color: 'success', to: '/admin/orders?status=DELIVERED' },
@@ -28,11 +28,12 @@ const salesStats = ref([
   { id: 'month', label: '이번달 매출', value: 0, change: '0%', changeType: 'positive' },
 ])
 
-// 교환/반품/취소 현황
+// 클레임 현황
 const claimStats = ref([
-  { id: 'cancel', label: '취소', value: 0, color: 'error', to: '/admin/orders/claims?claimType=CANCEL' },
-  { id: 'refund', label: '환불', value: 0, color: 'warning', to: '/admin/orders/claims?claimType=RETURN' },
-  { id: 'exchange', label: '교환', value: 0, color: 'info', to: '/admin/orders/claims?claimType=EXCHANGE' },
+  { id: 'exchangeRequested', label: '교환 대기', value: 0, color: 'info', to: '/admin/orders/claims?claimType=EXCHANGE&status=REQUESTED' },
+  { id: 'returnRequested', label: '반품 대기', value: 0, color: 'warning', to: '/admin/orders/claims?claimType=RETURN&status=REQUESTED' },
+  { id: 'inspectPending', label: '검수 대기', value: 0, color: 'primary', to: '/admin/orders/claims?status=APPROVED' },
+  { id: 'cancelRequested', label: '환불 대기', value: 0, color: 'error', to: '/admin/orders/claims?claimType=CANCEL&status=REQUESTED' },
 ])
 
 // 최근 주문
@@ -92,9 +93,10 @@ const fetchDashboard = async () => {
 
     // 클레임 현황 매핑
     if (data.claims) {
-      claimStats.value[0].value = data.claims.cancel || 0
-      claimStats.value[1].value = data.claims.refund || 0
-      claimStats.value[2].value = data.claims.exchange || 0
+      claimStats.value[0].value = data.claims.exchangeRequested || 0
+      claimStats.value[1].value = data.claims.returnRequested || 0
+      claimStats.value[2].value = data.claims.inspectPending || 0
+      claimStats.value[3].value = data.claims.cancelRequested || 0
     }
 
     // 최근 주문 매핑
@@ -126,7 +128,7 @@ const handleOrderSearch = () => {
   if (!keyword) return
 
   router.push({
-    path: '/api/v1/admin/orders',
+    path: '/admin/orders',
     query: { keyword, searchType: 'ORDER_NUMBER' },
   })
 }
@@ -245,7 +247,7 @@ onMounted(() => {
             전체 보기 →
           </NuxtLink>
         </div>
-        <div class="grid grid-cols-3 gap-3">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <NuxtLink
             v-for="stat in claimStats"
             :key="stat.id"
