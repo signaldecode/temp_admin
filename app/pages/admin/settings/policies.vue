@@ -327,7 +327,7 @@ onMounted(() => {
               </div>
               <div>
                 <label class="block text-sm font-medium text-neutral-700 mb-1">
-                  적립금 최대 사용 금액
+                  최대 사용 적립금
                 </label>
                 <div class="flex items-center gap-2">
                   <span class="text-sm text-neutral-500">주문 금액의</span>
