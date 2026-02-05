@@ -73,8 +73,8 @@ const fetchDiscount = async () => {
     type: 'percent',
     value: 20,
     targetCategories: [],
-    startDate: '2025-01-01',
-    endDate: '2025-01-31',
+    startDate: '2025-01-01T00:00',
+    endDate: '2025-01-31T23:59',
     hasEndDate: true,
     status: 'active',
   }
@@ -156,16 +156,29 @@ onMounted(() => {
 
     <div v-else class="space-y-6">
       <!-- 상태 -->
-      <UiCard title="상태">
-        <div class="flex gap-4">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input v-model="form.status" type="radio" value="active" class="w-4 h-4 text-primary-600">
-            <span class="text-sm text-neutral-700">활성</span>
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input v-model="form.status" type="radio" value="inactive" class="w-4 h-4 text-primary-600">
-            <span class="text-sm text-neutral-700">비활성</span>
-          </label>
+      <UiCard title="할인 상태">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-neutral-900">할인 활성화</p>
+            <p class="text-xs text-neutral-500 mt-0.5">활성화하면 설정한 기간 동안 할인이 적용됩니다.</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="form.isActive"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              form.isActive ? 'bg-primary-600' : 'bg-neutral-200',
+            ]"
+            @click="form.isActive = !form.isActive"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                form.isActive ? 'translate-x-5' : 'translate-x-0',
+              ]"
+            />
+          </button>
         </div>
       </UiCard>
 
@@ -248,14 +261,14 @@ onMounted(() => {
         <div class="space-y-4">
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="block text-xs text-neutral-500 mb-1">시작일 <span class="text-error-500">*</span></label>
-              <input v-model="form.startDate" type="date" class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <label class="block text-xs text-neutral-500 mb-1">시작일시 <span class="text-error-500">*</span></label>
+              <input v-model="form.startDate" type="datetime-local" class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
             </div>
             <div>
-              <label class="block text-xs text-neutral-500 mb-1">종료일</label>
+              <label class="block text-xs text-neutral-500 mb-1">종료일시</label>
               <input
                 v-model="form.endDate"
-                type="date"
+                type="datetime-local"
                 :disabled="!form.hasEndDate"
                 :class="['w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500', !form.hasEndDate ? 'bg-neutral-100 text-neutral-400' : '']"
               >
