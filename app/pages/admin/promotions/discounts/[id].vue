@@ -29,19 +29,11 @@ const categoryOptions = [
   { value: 'acc', label: '액세서리' },
 ]
 
-// 원단위 절사 옵션
-const roundingUnitOptions = [
-  { value: 10, label: '10원 단위' },
-  { value: 100, label: '100원 단위' },
-]
-
 // 폼 데이터
 const form = ref({
   name: '',
   type: 'percent',
   value: 0,
-  useRounding: false,
-  roundingUnit: 10,
   targetCategories: [],
   startDate: '',
   endDate: '',
@@ -80,8 +72,6 @@ const fetchDiscount = async () => {
     name: '신년 세일',
     type: 'percent',
     value: 20,
-    useRounding: true,
-    roundingUnit: 100,
     targetCategories: [],
     startDate: '2025-01-01',
     endDate: '2025-01-31',
@@ -117,8 +107,6 @@ const handleSave = async () => {
     name: form.value.name,
     type: form.value.type,
     value: form.value.value,
-    useRounding: form.value.type === 'percent' ? form.value.useRounding : false,
-    roundingUnit: form.value.type === 'percent' && form.value.useRounding ? form.value.roundingUnit : null,
     targetCategories: form.value.targetCategories.length > 0 ? form.value.targetCategories : null,
     startDate: form.value.startDate,
     endDate: form.value.hasEndDate ? form.value.endDate : null,
@@ -224,46 +212,6 @@ onMounted(() => {
                 </span>
               </div>
             </div>
-          </div>
-
-          <!-- 원단위 절사 (% 선택 시에만 표시) -->
-          <div v-if="form.type === 'percent'" class="p-4 bg-neutral-50 rounded-lg space-y-3">
-            <label class="flex items-center justify-between cursor-pointer">
-              <span class="text-sm font-medium text-neutral-700">원단위 절사 사용</span>
-              <button
-                type="button"
-                role="switch"
-                :aria-checked="form.useRounding"
-                :class="[
-                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                  form.useRounding ? 'bg-primary-600' : 'bg-neutral-200',
-                ]"
-                @click="form.useRounding = !form.useRounding"
-              >
-                <span
-                  :class="[
-                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                    form.useRounding ? 'translate-x-5' : 'translate-x-0',
-                  ]"
-                />
-              </button>
-            </label>
-            <div v-if="form.useRounding" class="flex gap-2">
-              <label
-                v-for="opt in roundingUnitOptions"
-                :key="opt.value"
-                :class="[
-                  'flex-1 px-4 py-2 border rounded-lg cursor-pointer transition-colors text-center text-sm',
-                  form.roundingUnit === opt.value ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium' : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
-                ]"
-              >
-                <input v-model="form.roundingUnit" type="radio" :value="opt.value" class="sr-only">
-                {{ opt.label }}
-              </label>
-            </div>
-            <p v-if="form.useRounding" class="text-xs text-neutral-400">
-              예: 10% 할인 시 12,345원 → {{ form.roundingUnit === 10 ? '11,110원 (10원 단위 절사)' : '11,100원 (100원 단위 절사)' }}
-            </p>
           </div>
         </div>
       </UiCard>
