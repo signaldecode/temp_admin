@@ -45,26 +45,46 @@ const showStatusModal = ref(false)
 const selectedStatus = ref('')
 const isChangingStatus = ref(false)
 
-// 주문 상태 옵션
+// 주문 상태 옵션 (필터용)
 const statusOptions = [
-  { value: 'PENDING', label: '결제대기' },
-  { value: 'PAID', label: '주문완료' },
+  { value: 'PENDING', label: '입금대기' },
+  { value: 'PAID', label: '결제완료' },
   { value: 'PREPARING', label: '상품준비중' },
   { value: 'SHIPPING', label: '배송중' },
   { value: 'DELIVERED', label: '배송완료' },
-  { value: 'CANCELLED', label: '취소' },
-  { value: 'REFUNDED', label: '환불' },
+  { value: 'CONFIRMED', label: '구매확정' },
+  { value: 'CANCELLED', label: '주문취소' },
+  { value: 'REFUNDED', label: '환불완료' },
+  { value: 'RETURN_REQUESTED', label: '반품요청' },
+  { value: 'RETURN_IN_PROGRESS', label: '반품진행중' },
+  { value: 'RETURN_COMPLETED', label: '반품완료' },
+  { value: 'EXCHANGE_REQUESTED', label: '교환요청' },
+  { value: 'EXCHANGE_IN_PROGRESS', label: '교환진행중' },
+  { value: 'EXCHANGE_COMPLETED', label: '교환완료' },
 ]
 
 // 주문 상태 매핑
 const statusMap = {
-  PENDING: { label: '결제대기', variant: 'neutral' },
-  PAID: { label: '주문완료', variant: 'primary' },
+  PENDING: { label: '입금대기', variant: 'neutral' },
+  PAID: { label: '결제완료', variant: 'primary' },
   PREPARING: { label: '상품준비중', variant: 'warning' },
   SHIPPING: { label: '배송중', variant: 'info' },
   DELIVERED: { label: '배송완료', variant: 'success' },
-  CANCELLED: { label: '취소', variant: 'error' },
-  REFUNDED: { label: '환불', variant: 'error' },
+  CONFIRMED: { label: '구매확정', variant: 'success' },
+  CANCELLED: { label: '주문취소', variant: 'neutral' },
+  REFUNDED: { label: '환불완료', variant: 'neutral' },
+  // 반품
+  RETURN_REQUESTED: { label: '반품요청', variant: 'warning' },
+  RETURN_IN_PROGRESS: { label: '반품진행중', variant: 'warning' },
+  RETURN_COMPLETED: { label: '반품완료', variant: 'neutral' },
+  PARTIAL_RETURN_IN_PROGRESS: { label: '부분반품진행중', variant: 'warning' },
+  PARTIAL_RETURN_COMPLETED: { label: '부분반품완료', variant: 'neutral' },
+  // 교환
+  EXCHANGE_REQUESTED: { label: '교환요청', variant: 'warning' },
+  EXCHANGE_IN_PROGRESS: { label: '교환진행중', variant: 'warning' },
+  EXCHANGE_COMPLETED: { label: '교환완료', variant: 'neutral' },
+  PARTIAL_EXCHANGE_IN_PROGRESS: { label: '부분교환진행중', variant: 'warning' },
+  PARTIAL_EXCHANGE_COMPLETED: { label: '부분교환완료', variant: 'neutral' },
 }
 
 // 결제수단 매핑
@@ -108,7 +128,7 @@ const fetchOrders = async () => {
     selectedIds.value = []
   } catch (err) {
     console.error('Orders fetch error:', err)
-    error.value = err.data?.message || err.message || '주문 목록을 불러오는데 실패했습니다.'
+    error.value = err.data?.error?.message || err.data?.message || err.message || '주문 목록을 불러오는데 실패했습니다.'
   } finally {
     isLoading.value = false
   }
@@ -145,7 +165,7 @@ const tableColumns = [
   { key: 'itemCount', label: '건수', align: 'center' },
   { key: 'paymentMethod', label: '결제수단', align: 'center' },
   { key: 'grandTotal', label: '주문금액', align: 'right' },
-  { key: 'status', label: '상태', align: 'center' },
+  { key: 'status', label: '주문상태', align: 'center' },
 ]
 
 // 전체 선택/해제
@@ -201,7 +221,7 @@ const handleStatusChange = async () => {
     console.error('Status change error:', err)
     uiStore.showToast({
       type: 'error',
-      message: err.data?.message || err.message || '상태 변경에 실패했습니다.',
+      message: err.data?.error?.message || err.data?.message || err.message || '상태 변경에 실패했습니다.',
     })
   } finally {
     isChangingStatus.value = false

@@ -33,16 +33,26 @@ const carriers = computed(() => catalogStore.carriers)
 
 // 주문 상태 매핑
 const statusMap = {
-  PENDING: { label: '결제대기', variant: 'neutral' },
-  PAID: { label: '주문완료', variant: 'primary' },
+  PENDING: { label: '입금대기', variant: 'neutral' },
+  PAID: { label: '결제완료', variant: 'primary' },
   PREPARING: { label: '상품준비중', variant: 'warning' },
   SHIPPING: { label: '배송중', variant: 'info' },
   DELIVERED: { label: '배송완료', variant: 'success' },
   CONFIRMED: { label: '구매확정', variant: 'success' },
+  CANCELLED: { label: '주문취소', variant: 'neutral' },
+  REFUNDED: { label: '환불완료', variant: 'neutral' },
+  // 반품
   RETURN_REQUESTED: { label: '반품요청', variant: 'warning' },
+  RETURN_IN_PROGRESS: { label: '반품진행중', variant: 'warning' },
+  RETURN_COMPLETED: { label: '반품완료', variant: 'neutral' },
+  PARTIAL_RETURN_IN_PROGRESS: { label: '부분반품진행중', variant: 'warning' },
+  PARTIAL_RETURN_COMPLETED: { label: '부분반품완료', variant: 'neutral' },
+  // 교환
   EXCHANGE_REQUESTED: { label: '교환요청', variant: 'warning' },
-  CANCELLED: { label: '주문취소', variant: 'success' },
-  REFUNDED: { label: '환불완료', variant: 'error' },
+  EXCHANGE_IN_PROGRESS: { label: '교환진행중', variant: 'warning' },
+  EXCHANGE_COMPLETED: { label: '교환완료', variant: 'neutral' },
+  PARTIAL_EXCHANGE_IN_PROGRESS: { label: '부분교환진행중', variant: 'warning' },
+  PARTIAL_EXCHANGE_COMPLETED: { label: '부분교환완료', variant: 'neutral' },
 }
 
 // 결제 수단 매핑
@@ -63,33 +73,40 @@ const paymentStatusMap = {
   FAILED: { label: '결제실패', variant: 'error' },
   CANCELLED: { label: '취소', variant: 'neutral' },
   REFUNDED: { label: '환불완료', variant: 'neutral' },
-  PARTIAL_REFUNDED: { label: '부분환불', variant: 'warning' },
 }
 
-// 주문 상태 옵션
+// 주문 상태 옵션 (직접 변경 가능한 상태만)
 const allStatusOptions = [
-  { value: 'PENDING', label: '결제대기' },
-  { value: 'PAID', label: '주문완료' },
+  { value: 'PENDING', label: '입금대기' },
+  { value: 'PAID', label: '결제완료' },
   { value: 'PREPARING', label: '상품준비중' },
   { value: 'SHIPPING', label: '배송중' },
   { value: 'DELIVERED', label: '배송완료' },
-  { value: 'CANCELLED', label: '취소' },
-  { value: 'REFUNDED', label: '환불' },
+  { value: 'CANCELLED', label: '주문취소' },
 ]
 
 // 상태별 허용 전이 규칙
-// - 취소: 상품준비중 전까지만 가능 (배송 프로세스 시작 전)
-// - 환불: 배송완료 후에도 가능 (반품 후 환불)
-// - 상품준비중 이후: 순방향 진행 + 환불만 가능 (역방향 불가)
+// - 배송 전 (PENDING, PAID, PREPARING): 직접 상태 변경 + 취소 가능
+// - 배송중 전환: "발송 등록" 모달을 통해서만 가능 (shipments API)
+// - 배송 중 (SHIPPING): 배송완료로만 변경 가능
+// - 배송 후 (DELIVERED, CONFIRMED): 직접 변경 불가 → 클레임 생성 필요
+// - 주문 취소: PAID 상태에서만 가능 (PREPARING부터는 반품으로 처리)
 const allowedTransitions = {
-  PENDING: ['PAID', 'CANCELLED'],           // 결제대기 → 주문완료, 취소
-  PAID: ['PREPARING', 'CANCELLED', 'REFUNDED'], // 주문완료 → 상품준비중, 취소, 환불
-  PREPARING: ['SHIPPING', 'DELIVERED'],     // 상품준비중 → 배송중, 배송완료 (취소 불가, 환불은 배송완료 후)
+  PENDING: ['PAID', 'CANCELLED'],           // 입금대기 → 결제완료, 취소
+  PAID: ['PREPARING', 'CANCELLED'],         // 결제완료 → 상품준비중, 취소
+  PREPARING: [],                            // 상품준비중 → 배송중은 발송 등록으로, 취소는 반품으로
   SHIPPING: ['DELIVERED'],                  // 배송중 → 배송완료만 가능
-  DELIVERED: ['REFUNDED'],                  // 배송완료 → 환불 가능 (반품 처리)
+  DELIVERED: [],                            // 배송완료 → 클레임으로만 처리
+  CONFIRMED: [],                            // 구매확정 → 클레임으로만 처리
   CANCELLED: [],                            // 취소 → 변경 불가
   REFUNDED: [],                             // 환불 → 변경 불가
 }
+
+// 배송 완료 후 상태인지 (클레임 생성 필요)
+const isPostDelivery = computed(() => {
+  const status = order.value?.status
+  return ['DELIVERED', 'CONFIRMED'].includes(status)
+})
 
 // 현재 상태에서 변경 가능한 상태 옵션
 const statusOptions = computed(() => {
@@ -110,7 +127,7 @@ const fetchOrder = async () => {
     order.value = response.data
   } catch (err) {
     console.error('Order fetch error:', err)
-    error.value = err.data?.message || err.message || '주문 정보를 불러오는데 실패했습니다.'
+    error.value = err.data?.error?.message || err.data?.message || err.message || '주문 정보를 불러오는데 실패했습니다.'
   } finally {
     isLoading.value = false
   }
@@ -154,10 +171,77 @@ const paymentInfoItems = computed(() => {
   return items
 })
 
-// 배송지 정보 아이템
+// 배송 상태 매핑 (shipment status)
+const shipmentStatusMap = {
+  PENDING: { label: '배송 대기', variant: 'neutral' },
+  IN_TRANSIT: { label: '배송중', variant: 'info' },
+  DELIVERED: { label: '배송완료', variant: 'success' },
+  FAILED: { label: '배송실패', variant: 'error' },
+}
+
+// 배송 목록 (shipments 배열만 - 실제 발송된 건)
+const shipments = computed(() => {
+  // shipments 배열이 있고 내용이 있으면 그것만 사용
+  if (order.value?.shipments?.length) {
+    return order.value.shipments
+  }
+  return []
+})
+
+// 선택된 배송 탭 (여러 배송 시)
+const selectedShipmentIndex = ref(0)
+const selectedShipment = computed(() => shipments.value[selectedShipmentIndex.value] || null)
+
+// 배송 정보 아이템 (선택된 배송 기준)
 const shippingInfoItems = computed(() => {
-  if (!order.value?.shipping) return []
-  const s = order.value.shipping
+  const s = selectedShipment.value
+  if (!s) return []
+
+  const items = []
+
+  // 배송 번호 (shipmentNumber)
+  if (s.shipmentNumber) {
+    items.push({ key: 'shipmentNumber', label: '배송번호', value: s.shipmentNumber })
+  }
+
+  // 배송 상태
+  if (s.status) {
+    items.push({ key: 'shipmentStatus', label: '배송 상태', value: s.status })
+  }
+
+  // 택배사 (carrierName 또는 carrierCode)
+  if (s.carrierName || s.carrierCode) {
+    items.push({ key: 'carrier', label: '택배사', value: s.carrierName || s.carrierCode })
+  }
+
+  // 운송장
+  if (s.trackingNumber) {
+    items.push({
+      key: 'tracking',
+      label: '운송장',
+      value: s.trackingNumber,
+      url: s.trackingUrl || null,
+    })
+  }
+
+  // 발송일
+  if (s.shippedAt) {
+    items.push({ key: 'shippedAt', label: '발송일', value: formatDate(s.shippedAt, 'long') })
+  }
+
+  // 배송완료일
+  if (s.deliveredAt) {
+    items.push({ key: 'deliveredAt', label: '배송완료일', value: formatDate(s.deliveredAt, 'long') })
+  }
+
+  return items
+})
+
+// 배송지 정보 (주문의 shipping 정보)
+const shippingAddressItems = computed(() => {
+  const s = order.value?.shipping
+  if (!s) return []
+
   const items = [
     { key: 'recipientName', label: '수령인', value: s.recipientName },
     { key: 'recipientPhone', label: '연락처', value: s.recipientPhone },
@@ -169,12 +253,149 @@ const shippingInfoItems = computed(() => {
     items.push({ key: 'memo', label: '배송메모', value: s.deliveryMessage })
   }
 
-  if (s.trackingNumber) {
-    items.push({ key: 'tracking', label: '운송장', value: s.trackingNumber })
-  }
-
   return items
 })
+
+// ── 분할배송 (발송 등록) ──
+const showShipmentModal = ref(false)
+const isCreatingShipment = ref(false)
+const shipmentCarrierId = ref('')
+const shipmentTrackingNumber = ref('')
+const shipmentItems = ref([]) // [{orderItemId, productName, variantName, imageUrl, totalQty, shippedQty, shipQty, selected}]
+
+// 상품별 이미 발송된 수량 계산
+const getShippedQuantity = (orderItemId) => {
+  let shipped = 0
+  for (const shipment of shipments.value) {
+    const item = shipment.items?.find((i) => i.orderItemId === orderItemId)
+    if (item) {
+      shipped += item.quantity
+    }
+  }
+  return shipped
+}
+
+// 미발송 상품이 있는지 확인
+const hasUnshippedItems = computed(() => {
+  if (!order.value?.items?.length) return false
+  return order.value.items.some((item) => {
+    const shippedQty = getShippedQuantity(item.orderItemId)
+    return shippedQty < item.quantity
+  })
+})
+
+// 주문 상품 상태 매핑 (orderItemStatus - 백엔드 제공)
+const orderItemStatusMap = {
+  PENDING: { label: '대기', variant: 'neutral' },
+  PREPARING: { label: '준비중', variant: 'warning' },
+  SHIPPING: { label: '배송중', variant: 'info' },
+  DELIVERED: { label: '배송완료', variant: 'success' },
+  CONFIRMED: { label: '구매확정', variant: 'success' },
+  CANCELLED: { label: '취소', variant: 'neutral' },
+  RETURN_REQUESTED: { label: '반품요청', variant: 'warning' },
+  EXCHANGE_REQUESTED: { label: '교환요청', variant: 'warning' },
+}
+
+// orderItemId로 주문 상품 정보 찾기 (배송 상품 목록용)
+const getOrderItemById = (orderItemId) => {
+  return order.value?.items?.find((item) => item.orderItemId === orderItemId)
+}
+
+// 발송 가능한 상태인지 확인 (상품준비중, 배송중일 때만 - 백엔드 스펙)
+const canCreateShipment = computed(() => {
+  const status = order.value?.status
+  return ['PREPARING', 'SHIPPING'].includes(status) && hasUnshippedItems.value
+})
+
+// 발송 모달 열기
+const openShipmentModal = () => {
+  // 주문 상품을 기반으로 발송 아이템 초기화
+  shipmentItems.value = (order.value?.items || []).map((item) => {
+    const shippedQty = getShippedQuantity(item.orderItemId)
+    const remainingQty = item.quantity - shippedQty
+    return {
+      orderItemId: item.orderItemId,
+      productName: item.productName,
+      variantName: item.variantName,
+      imageUrl: item.imageUrl,
+      totalQty: item.quantity,
+      shippedQty,
+      remainingQty,
+      shipQty: remainingQty > 0 ? remainingQty : 0, // 기본값: 남은 수량 전체
+      selected: remainingQty > 0, // 미발송 상품만 선택
+    }
+  })
+  shipmentCarrierId.value = ''
+  shipmentTrackingNumber.value = ''
+  showShipmentModal.value = true
+}
+
+// 발송 상품 선택 토글
+const toggleShipmentItem = (item) => {
+  if (item.remainingQty <= 0) return // 이미 전량 발송된 상품은 선택 불가
+  item.selected = !item.selected
+  if (!item.selected) {
+    item.shipQty = 0
+  } else {
+    item.shipQty = item.remainingQty
+  }
+}
+
+// 발송 수량 변경
+const updateShipmentQty = (item, qty) => {
+  const newQty = Math.max(0, Math.min(qty, item.remainingQty))
+  item.shipQty = newQty
+  item.selected = newQty > 0
+}
+
+// 선택된 발송 상품
+const selectedShipmentItems = computed(() => {
+  return shipmentItems.value.filter((item) => item.selected && item.shipQty > 0)
+})
+
+// 발송 가능 여부
+const canSubmitShipment = computed(() => {
+  return (
+    shipmentCarrierId.value &&
+    shipmentTrackingNumber.value.trim() &&
+    selectedShipmentItems.value.length > 0
+  )
+})
+
+// 발송 등록 실행
+const createShipment = async () => {
+  if (!canSubmitShipment.value) return
+
+  isCreatingShipment.value = true
+  try {
+    const payload = {
+      carrierId: Number(shipmentCarrierId.value),
+      trackingNumber: shipmentTrackingNumber.value.trim(),
+      items: selectedShipmentItems.value.map((item) => ({
+        orderItemId: item.orderItemId,
+        quantity: item.shipQty,
+      })),
+    }
+
+    await $api.post(`/admin/delivery/orders/${orderId.value}/shipments`, payload)
+
+    uiStore.showToast({
+      type: 'success',
+      message: `${selectedShipmentItems.value.length}건의 상품이 발송 등록되었습니다.`,
+    })
+
+    showShipmentModal.value = false
+    await fetchOrder() // 주문 정보 새로고침
+  } catch (err) {
+    console.error('Shipment creation error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || err.message || '발송 등록에 실패했습니다.',
+    })
+  } finally {
+    isCreatingShipment.value = false
+  }
+}
 
 // 진입 경로 판별
 const fromClaims = computed(() => route.query.from === 'claims')
@@ -189,63 +410,92 @@ const claimStatusMap = {
   REQUESTED: { label: '요청', variant: 'warning' },
   APPROVED: { label: '승인', variant: 'info' },
   IN_PROGRESS: { label: '진행중', variant: 'info' },
+  ON_HOLD: { label: '보류', variant: 'warning' },
   COMPLETED: { label: '완료', variant: 'success' },
   REJECTED: { label: '거절', variant: 'error' },
 }
 const reasonTypeMap = {
-  DEFECTIVE: '불량',
+  CHANGE_OF_MIND: '단순 변심',
+  DEFECTIVE: '상품 불량/파손',
   WRONG_DELIVERY: '오배송',
-  DELAYED_DELIVERY: '배송지연',
-  CHANGE_OF_MIND: '단순변심',
-  INCOMPATIBILITY: '호환성문제',
+  WRONG_OPTION: '옵션 오선택',
+  DELAYED_DELIVERY: '배송 지연',
+  INCOMPATIBILITY: '호환성 문제',
+  OUT_OF_STOCK: '품절',
+  PRICE_ERROR: '가격 오류',
+  CUSTOMER_REQUEST: '고객 요청',
   OTHER: '기타',
 }
-const claimId = computed(() => route.query.claimId)
-const claimType = computed(() => route.query.claimType)
-const claimStatus = computed(() => route.query.claimStatus)
-
-// 클레임 상세 정보 (API에서 가져옴)
-const claimDetail = ref(null)
+// ── 클레임 관련 (통합) ──
+// 주문에 연결된 모든 클레임
+const orderClaims = ref([])
 const isClaimLoading = ref(false)
 
-const fetchClaimDetail = async () => {
+// 선택된 클레임 ID (query param 또는 사용자 선택)
+const selectedClaimId = ref(route.query.claimId || null)
+
+// 선택된 클레임 (computed)
+const selectedClaim = computed(() => {
+  if (!orderClaims.value.length) return null
+  if (selectedClaimId.value) {
+    return orderClaims.value.find((c) => String(c.claimId) === String(selectedClaimId.value)) || orderClaims.value[0]
+  }
+  // 선택된 것이 없으면 첫 번째 클레임 (클레임이 있는 경우)
+  return orderClaims.value[0]
+})
+
+// 클레임이 있는지 여부
+const hasClaims = computed(() => orderClaims.value.length > 0)
+
+// 클레임 목록 조회 (통합)
+const fetchClaims = async () => {
   if (!orderId.value) return
   isClaimLoading.value = true
   try {
     const response = await $api.get(`/admin/claims/orders/${orderId.value}`)
     const data = response.data?.data || response.data
-    // 배열로 오는 경우 첫 번째 항목 사용
-    claimDetail.value = Array.isArray(data) ? data[0] : data
+    orderClaims.value = Array.isArray(data) ? data : data ? [data] : []
+
+    // query param에서 claimId가 있으면 선택
+    if (route.query.claimId) {
+      selectedClaimId.value = route.query.claimId
+    }
   } catch (err) {
-    console.error('Claim detail fetch error:', err)
+    console.error('Claims fetch error:', err)
+    orderClaims.value = []
   } finally {
     isClaimLoading.value = false
   }
 }
+
+// 클레임 선택
+const selectClaim = (claimId) => {
+  selectedClaimId.value = claimId
+}
+
+// 하위호환: claimDetail -> selectedClaim alias
+const claimDetail = selectedClaim
 
 // 클레임 정보 표시용 computed
 const claimInfoItems = computed(() => {
   const detail = claimDetail.value
   if (!detail) return []
 
+  // 클레임 유형에 따른 상품 라벨
+  const itemsLabel = {
+    CANCEL: '취소 상품',
+    EXCHANGE: '교환 상품',
+    RETURN: '반품 상품',
+  }[detail.claimType] || '대상 상품'
+
   const items = [
     { key: 'claimType', label: '유형', value: detail.claimType },
     { key: 'claimStatus', label: '상태', value: detail.status },
-    { key: 'claimItems', label: '대상 상품', value: detail.items || [] },
+    { key: 'claimItems', label: itemsLabel, value: detail.items || [] },
     { key: 'reasonType', label: '사유 유형', value: reasonTypeMap[detail.reasonType] || detail.reasonType || '-' },
     { key: 'reason', label: '상세 사유', value: detail.reason || '-' },
     { key: 'requestedAt', label: '접수 일시', value: formatDate(detail.requestedAt, 'long') },
-    { key: 'refundAmount', label: '환불 금액', value: detail.refundAmount != null ? formatCurrency(detail.refundAmount) : '-' },
   ]
-
-  // 실제 환불 금액 (환불 완료 후에만 표시)
-  if (detail.actualRefundAmount != null) {
-    items.push({
-      key: 'actualRefundAmount',
-      label: '환불 완료',
-      value: formatCurrency(detail.actualRefundAmount),
-    })
-  }
 
   // 회수 배송 정보
   if (detail.returnTrackingNumber) {
@@ -275,7 +525,40 @@ const claimInfoItems = computed(() => {
     items.push({ key: 'rejectReason', label: '거절 사유', value: detail.rejectReason })
   }
 
+  // 환불 금액 (취소/반품)
+  if (detail.refundAmount != null && detail.claimType !== 'EXCHANGE') {
+    items.push({ key: 'refundAmount', label: '환불 예정 금액', value: formatCurrency(detail.refundAmount) })
+  }
+
+  // 실제 환불 금액 (환불 완료 시)
+  if (detail.actualRefundAmount != null) {
+    items.push({ key: 'actualRefundAmount', label: '환불 완료 금액', value: formatCurrency(detail.actualRefundAmount) })
+  }
+
   return items
+})
+
+// 클레임 대상 상품인지 확인
+const isClaimedItem = (item) => {
+  if (!selectedClaim.value?.items?.length) return false
+  return claimDetail.value.items.some(
+    (ci) => ci.productName === item.productName && (!ci.variantName || ci.variantName === item.variantName)
+  )
+}
+
+// 취소선 표시 여부 (취소/반품 완료만, 교환 및 거절은 제외)
+const isStrikethroughItem = (item) => {
+  if (!isClaimedItem(item)) return false
+  if (claimDetail.value?.claimType === 'EXCHANGE') return false
+  if (claimDetail.value?.status === 'REJECTED') return false
+  return true
+}
+
+// 클레임 유형에 따른 상품 목록 타이틀
+const itemsTitle = computed(() => {
+  if (!selectedClaim.value) return '주문 상품'
+  const typeMap = { CANCEL: '취소 상품', EXCHANGE: '교환 상품', RETURN: '반품 상품' }
+  return typeMap[selectedClaim.value.claimType] || '주문 상품'
 })
 
 // 목록으로 돌아가기
@@ -291,20 +574,26 @@ const goToUser = (userId) => {
 // 상태 변경 모달
 const showStatusModal = ref(false)
 const selectedStatus = ref('')
-const selectedCarrierId = ref('')
-const trackingNumber = ref('')
 const statusReason = ref('')
 const showConfirmStep = ref(false) // 확인 단계 표시 여부
 
-// 배송중 상태에서 송장번호 필수 여부
-const isShippingSelected = computed(() => selectedStatus.value === 'SHIPPING')
-const isRefundSelected = computed(() => selectedStatus.value === 'REFUNDED')
-const refundReason = ref('')
-const refundAmount = ref('')
+// 배송 전 취소 선택 여부
+const isCancelSelected = computed(() => selectedStatus.value === 'CANCELLED')
+const cancelReason = ref('')
+const cancelReasonType = ref('')
+
+// 취소 사유 유형 옵션
+const cancelReasonOptions = [
+  { value: 'CHANGE_OF_MIND', label: '단순 변심' },
+  { value: 'OUT_OF_STOCK', label: '품절' },
+  { value: 'PRICE_ERROR', label: '가격 오류' },
+  { value: 'CUSTOMER_REQUEST', label: '고객 요청' },
+  { value: 'OTHER', label: '기타' },
+]
+
 const canChangeStatus = computed(() => {
   if (!selectedStatus.value || selectedStatus.value === order.value?.status) return false
-  if (isShippingSelected.value && (!selectedCarrierId.value || !trackingNumber.value.trim())) return false
-  if (isRefundSelected.value && !refundReason.value.trim()) return false
+  if (isCancelSelected.value && (!cancelReason.value.trim() || !cancelReasonType.value)) return false
   return true
 })
 
@@ -316,8 +605,8 @@ const canOpenStatusModal = computed(() => {
 // 상태 변경 불가 사유 메시지
 const getStatusChangeBlockedMessage = () => {
   const currentStatus = order.value?.status
-  if (currentStatus === 'DELIVERED') {
-    return '배송완료 상태에서는 상태를 변경할 수 없습니다.\n환불이 필요하면 별도로 환불 처리를 진행해 주세요.'
+  if (currentStatus === 'DELIVERED' || currentStatus === 'CONFIRMED') {
+    return '배송완료 후에는 직접 상태 변경이 불가합니다.\n반품/교환/환불은 클레임을 생성해주세요.'
   }
   if (currentStatus === 'CANCELLED') {
     return '취소된 주문은 상태를 변경할 수 없습니다.'
@@ -338,28 +627,17 @@ const openStatusModal = () => {
   // 첫 번째 옵션을 기본 선택
   selectedStatus.value = statusOptions.value[0]?.value || ''
   statusReason.value = ''
-  refundReason.value = ''
-  refundAmount.value = ''
+  cancelReason.value = ''
+  cancelReasonType.value = ''
   showConfirmStep.value = false // 확인 단계 초기화
-
-  // 기존 배송 정보가 있으면 미리 채워줌
-  const shipping = order.value.shipping
-  if (shipping?.trackingNumber) {
-    trackingNumber.value = shipping.trackingNumber
-    // 택배사 ID (API 응답 구조에 따라 carrierId 또는 carrier.id)
-    selectedCarrierId.value = shipping.carrierId || shipping.carrier?.id || ''
-  } else {
-    trackingNumber.value = ''
-    selectedCarrierId.value = ''
-  }
 
   showStatusModal.value = true
 }
 
 // 되돌릴 수 없는 상태 변경인지 확인
 const isIrreversibleChange = computed(() => {
-  // 상품준비중, 배송중, 배송완료, 환불로 변경하는 경우 되돌릴 수 없음
-  return ['PREPARING', 'SHIPPING', 'DELIVERED', 'REFUNDED'].includes(selectedStatus.value)
+  // 상품준비중, 배송완료, 취소로 변경하는 경우 되돌릴 수 없음
+  return ['PREPARING', 'DELIVERED', 'CANCELLED'].includes(selectedStatus.value)
 })
 
 // 변경 버튼 클릭 시
@@ -386,63 +664,82 @@ const executeStatusChange = async () => {
   isChangingStatus.value = true
 
   try {
-    if (isRefundSelected.value) {
-      // 환불 처리는 별도 API
-      const refundPayload = {
+    // 주문 취소 + 즉시 환불 (단독 환불 API)
+    if (isCancelSelected.value) {
+      await $api.post('/api/v1/admin/refunds', {
         orderId: Number(orderId.value),
-        claimId: claimId.value ? Number(claimId.value) : undefined,
-        reason: refundReason.value,
-      }
-      if (refundAmount.value) {
-        refundPayload.amount = Number(refundAmount.value)
-      }
-      await $api.post('/admin/refunds', refundPayload)
+        claimType: 'CANCEL',
+        reasonType: cancelReasonType.value,
+        reason: cancelReason.value,
+        claimItems: (order.value?.items || []).map((item) => ({
+          orderItemId: item.orderItemId,
+          quantity: item.quantity,
+        })),
+      })
+
+      showStatusModal.value = false
+      uiStore.showToast({
+        type: 'success',
+        message: '주문이 취소되고 환불 처리되었습니다.',
+      })
+
+      // 주문 정보 새로고침
+      await fetchOrder()
     } else {
+      // 일반 상태 변경
       const payload = {
         orderIds: [Number(orderId.value)],
         status: selectedStatus.value,
         reason: statusReason.value || undefined,
       }
 
-      // 배송중 상태로 변경 시 송장 정보 추가
-      if (isShippingSelected.value) {
-        payload.carrierId = Number(selectedCarrierId.value)
-        payload.trackingNumber = trackingNumber.value
-      }
-
       await $api.patch('/admin/orders/statuses', payload)
+
+      showStatusModal.value = false
+      uiStore.showToast({
+        type: 'success',
+        message: '주문 상태가 변경되었습니다.',
+      })
+
+      // 주문 정보 새로고침
+      await fetchOrder()
     }
-
-    showStatusModal.value = false
-
-    uiStore.showToast({
-      type: 'success',
-      message: '주문 상태가 변경되었습니다.',
-    })
-
-    // 주문 정보 새로고침
-    await fetchOrder()
   } catch (err) {
     console.error('Status change error:', err)
     uiStore.showToast({
       type: 'error',
-      message: err.data?.message || err.message || '상태 변경에 실패했습니다.',
+      message: err.data?.error?.message || err.data?.message || err.message || '상태 변경에 실패했습니다.',
     })
   } finally {
     isChangingStatus.value = false
   }
 }
 
-// 배송 정보 갱신
+// 배송 정보 갱신 (배송중인 shipment만 개별 호출)
 const refreshDelivery = async () => {
+  // 배송중인 shipment만 필터링
+  const inTransitShipments = shipments.value.filter((s) => s.status === 'IN_TRANSIT')
+  if (inTransitShipments.length === 0) {
+    uiStore.showToast({
+      type: 'info',
+      message: '갱신할 배송중인 건이 없습니다.',
+    })
+    return
+  }
+
   isRefreshingDelivery.value = true
 
   try {
-    await $api.post(`/admin/delivery/track/order/${orderId.value}/refresh`)
+    // 배송중인 shipment들을 병렬로 갱신
+    await Promise.all(
+      inTransitShipments.map((s) =>
+        $api.post(`/admin/delivery/track/shipment/${s.shipmentId}/refresh`)
+      )
+    )
 
     uiStore.showToast({
       type: 'success',
-      message: '배송 정보가 갱신되었습니다.',
+      message: `${inTransitShipments.length}건의 배송 정보가 갱신되었습니다.`,
     })
 
     // 주문 정보 새로고침
@@ -451,19 +748,24 @@ const refreshDelivery = async () => {
     console.error('Delivery refresh error:', err)
     uiStore.showToast({
       type: 'error',
-      message: err.data?.message || err.message || '배송 정보 갱신에 실패했습니다.',
+      message: err.data?.error?.message || err.data?.message || err.message || '배송 정보 갱신에 실패했습니다.',
     })
   } finally {
     isRefreshingDelivery.value = false
   }
 }
 
-// 배송 정보 갱신 버튼 표시 여부 (배송중/배송완료 상태에서만)
+// 배송 정보 갱신 버튼 표시 여부 (배송중인 shipment가 있을 때만)
 const canRefreshDelivery = computed(() => {
-  return ['SHIPPING', 'DELIVERED'].includes(order.value?.status)
+  return shipments.value.some((s) => s.status === 'IN_TRANSIT')
 })
 
-// ── 클레임 상태변경 (fromClaims일 때) ──
+// 배송중인 shipment 개수
+const inTransitShipmentCount = computed(() => {
+  return shipments.value.filter((s) => s.status === 'IN_TRANSIT').length
+})
+
+// ── 클레임 상태 변경 ──
 const showClaimModal = ref(false)
 const claimAction = ref('') // 'approve' | 'reject' | 'return-shipping' | 'receive-inspect' | 'exchange-complete' | 'refund'
 const claimAdminNote = ref('')
@@ -475,17 +777,60 @@ const claimReshipTrackingNumber = ref('')
 const claimReturnShippingCarrier = ref('')
 const claimReturnTrackingNumber = ref('')
 const claimRefundReason = ref('')
-const claimRefundAmount = ref('')
+const claimDeductShippingFee = ref(null) // null: 자동, true: 차감, false: 면제
 const claimInspectResult = ref('ACCEPT') // 'ACCEPT' | 'REJECT'
 const claimRestoreStock = ref(true) // true: 재고 복구, false: 복구 안 함
 const claimInspectRejectReason = ref('')
 const isClaimProcessing = ref(false)
 
+// ── 교환 발송 상품 (읽기 전용 - 고객 요청 기반) ──
+const exchangeItems = ref([])
+
+// 교환 아이템 초기화 (고객 요청 상품 기반)
+const initExchangeItems = () => {
+  const items = claimDetail.value?.items || []
+  exchangeItems.value = items.map((item) => {
+    // 고객이 교환 요청한 상품이 있는 경우
+    if (item.exchangeVariantId) {
+      const isSame = item.productId === item.exchangeProductId ||
+                     item.productName === item.exchangeProductName
+      return {
+        originalItem: item,
+        productId: item.exchangeProductId || item.productId,
+        productName: item.exchangeProductName || item.productName,
+        variantId: item.exchangeVariantId,
+        variantName: item.exchangeVariantName,
+        imageUrl: item.exchangeImageUrl || item.imageUrl,
+        quantity: item.quantity,
+        isSameProduct: isSame,
+      }
+    }
+    // 교환 요청 상품이 없으면 동일 상품으로 초기화
+    return {
+      originalItem: item,
+      productId: item.productId,
+      productName: item.productName,
+      variantId: item.variantId,
+      variantName: item.variantName,
+      imageUrl: item.imageUrl,
+      quantity: item.quantity,
+      isSameProduct: true,
+    }
+  })
+}
+
+// 교환 아이템 유효성 검사
+const exchangeItemsValid = computed(() => {
+  return exchangeItems.value.length > 0 &&
+    exchangeItems.value.every((item) => item.productId && item.quantity > 0)
+})
+
 // 클레임 모달에서 가능한 액션 (claimDetail 기반)
 const claimAvailableActions = computed(() => {
   const detail = claimDetail.value
-  const status = detail?.status || claimStatus.value
-  const type = detail?.claimType || claimType.value
+  if (!detail) return []
+  const status = detail.status
+  const type = detail.claimType
 
   // ── 취소 ──
   if (type === 'CANCEL') {
@@ -570,7 +915,7 @@ const canExecuteClaim = computed(() => {
   if (!claimAction.value) return false
   if (claimAction.value === 'reject' && !claimRejectReason.value.trim()) return false
   if (claimAction.value === 'return-shipping' && (!claimReturnShippingCarrier.value || !claimReturnTrackingNumber.value.trim())) return false
-  if (claimAction.value === 'exchange-complete' && (!claimShippingCompany.value || !claimTrackingNumber.value.trim())) return false
+  if (claimAction.value === 'exchange-complete' && (!claimShippingCompany.value || !claimTrackingNumber.value.trim() || !exchangeItemsValid.value)) return false
   if (claimAction.value === 'reship' && (!claimReshipCarrier.value || !claimReshipTrackingNumber.value.trim())) return false
   if (claimAction.value === 'refund' && !claimRefundReason.value.trim()) return false
   if (claimAction.value === 'receive-inspect' && claimInspectResult.value === 'REJECT' && !claimInspectRejectReason.value.trim()) return false
@@ -591,12 +936,16 @@ const openClaimModal = () => {
   claimReturnShippingCarrier.value = ''
   claimReturnTrackingNumber.value = ''
   claimRefundReason.value = ''
-  claimRefundAmount.value = ''
+  claimDeductShippingFee.value = null
   claimReshipCarrier.value = ''
   claimReshipTrackingNumber.value = ''
   claimInspectResult.value = 'ACCEPT'
   claimRestoreStock.value = true
   claimInspectRejectReason.value = ''
+  // 교환 완료 가능한 상태면 교환 아이템 초기화
+  if (actions.some(a => a.value === 'exchange-complete')) {
+    initExchangeItems()
+  }
   showClaimModal.value = true
 }
 
@@ -605,23 +954,26 @@ const executeClaimAction = async () => {
   isClaimProcessing.value = true
 
   try {
-    const id = claimDetail.value?.claimId || claimId.value
+    const id = claimDetail.value?.claimId
+    const fromStatus = claimDetail.value?.status
 
     if (claimAction.value === 'approve') {
-      const body = {}
+      const body = { fromStatus }
       if (claimAdminNote.value.trim()) body.adminNote = claimAdminNote.value
       await $api.post(`/admin/claims/${id}/approve`, body)
     } else if (claimAction.value === 'reject') {
       await $api.post(`/admin/claims/${id}/reject`, {
+        fromStatus,
         rejectReason: claimRejectReason.value,
       })
     } else if (claimAction.value === 'return-shipping') {
       await $api.post(`/admin/claims/${id}/return-shipping`, {
+        fromStatus,
         shippingCarrier: claimReturnShippingCarrier.value,
         trackingNumber: claimReturnTrackingNumber.value,
       })
     } else if (claimAction.value === 'receive-inspect') {
-      const inspectBody = { result: claimInspectResult.value }
+      const inspectBody = { fromStatus, result: claimInspectResult.value }
       if (claimInspectResult.value === 'ACCEPT') {
         inspectBody.restoreStock = claimRestoreStock.value
       }
@@ -631,45 +983,134 @@ const executeClaimAction = async () => {
       await $api.post(`/admin/claims/${id}/receive-inspect`, inspectBody)
     } else if (claimAction.value === 'exchange-complete') {
       const body = {
+        fromStatus,
         shippingCarrier: claimShippingCompany.value,
         trackingNumber: claimTrackingNumber.value,
+        exchangeItems: exchangeItems.value.map((item) => ({
+          originalClaimItemId: item.originalItem.claimItemId || item.originalItem.id,
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          isSameProduct: item.isSameProduct,
+        })),
       }
       if (claimAdminNote.value.trim()) body.adminNote = claimAdminNote.value
       await $api.post(`/admin/claims/${id}/exchange/complete`, body)
     } else if (claimAction.value === 'reship') {
       await $api.post(`/admin/claims/${id}/reship`, {
+        fromStatus,
         shippingCarrier: claimReshipCarrier.value,
         trackingNumber: claimReshipTrackingNumber.value,
       })
     } else if (claimAction.value === 'refund') {
       const body = {
         claimId: Number(id),
+        fromStatus,
         reason: claimRefundReason.value,
       }
-      if (claimRefundAmount.value) body.amount = Number(claimRefundAmount.value)
+      if (claimDeductShippingFee.value !== null) body.deductShippingFee = claimDeductShippingFee.value
       await $api.post('/admin/refunds', body)
     }
 
     showClaimModal.value = false
     uiStore.showToast({ type: 'success', message: '클레임 상태가 변경되었습니다.' })
-    await Promise.all([fetchOrder(), fetchClaimDetail()])
+    await Promise.all([fetchOrder(), fetchClaims()])
   } catch (err) {
     console.error('Claim action error:', err)
     uiStore.showToast({
       type: 'error',
-      message: err.data?.message || err.message || '클레임 처리에 실패했습니다.',
+      message: err.data?.error?.message || err.data?.message || err.message || '클레임 처리에 실패했습니다.',
     })
   } finally {
     isClaimProcessing.value = false
   }
 }
 
-// 초기 로드
-onMounted(() => {
-  fetchOrder()
-  if (fromClaims.value) {
-    fetchClaimDetail()
+// ── 클레임 생성 (배송 후) ──
+const showCreateClaimModal = ref(false)
+const newClaimType = ref('RETURN') // 'RETURN' | 'EXCHANGE'
+const newClaimReasonType = ref('')
+const newClaimReason = ref('')
+const newClaimItems = ref([]) // [{ orderItemId, productName, variantName, imageUrl, quantity, maxQuantity, selected }]
+const isCreatingClaim = ref(false)
+
+// 클레임 생성 사유 옵션
+const claimReasonOptions = [
+  { value: 'CHANGE_OF_MIND', label: '단순 변심' },
+  { value: 'DEFECTIVE', label: '상품 불량/파손' },
+  { value: 'WRONG_DELIVERY', label: '오배송' },
+  { value: 'WRONG_OPTION', label: '옵션 오선택' },
+  { value: 'OTHER', label: '기타' },
+]
+
+const initNewClaimItems = () => {
+  newClaimItems.value = (order.value?.items || []).map((item) => ({
+    orderItemId: item.orderItemId || item.id,
+    productName: item.productName,
+    variantName: item.variantName,
+    imageUrl: item.imageUrl,
+    quantity: item.quantity,
+    maxQuantity: item.quantity,
+    selected: true,
+  }))
+}
+
+const selectedNewClaimItems = computed(() => newClaimItems.value.filter((i) => i.selected))
+const newClaimItemsValid = computed(() => {
+  return selectedNewClaimItems.value.length > 0 && selectedNewClaimItems.value.every((i) => i.quantity > 0 && i.quantity <= i.maxQuantity)
+})
+
+const canCreateClaim = computed(() => {
+  return newClaimType.value && newClaimReasonType.value && newClaimReason.value.trim() && newClaimItemsValid.value
+})
+
+const openCreateClaimModal = () => {
+  newClaimType.value = 'RETURN'
+  newClaimReasonType.value = ''
+  newClaimReason.value = ''
+  initNewClaimItems()
+  showCreateClaimModal.value = true
+}
+
+const executeCreateClaim = async () => {
+  if (!canCreateClaim.value) return
+  isCreatingClaim.value = true
+
+  try {
+    const payload = {
+      orderId: Number(orderId.value),
+      claimType: newClaimType.value,
+      reasonType: newClaimReasonType.value,
+      reason: newClaimReason.value,
+      claimItems: selectedNewClaimItems.value.map((i) => ({
+        orderItemId: i.orderItemId,
+        quantity: i.quantity,
+      })),
+    }
+
+    await $api.post('/admin/claims', payload)
+
+    showCreateClaimModal.value = false
+    uiStore.showToast({ type: 'success', message: '클레임이 생성되었습니다.' })
+    await Promise.all([fetchOrder(), fetchClaims()])
+  } catch (err) {
+    console.error('Create claim error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.error?.message || err.data?.message || err.message || '클레임 생성에 실패했습니다.',
+    })
+  } finally {
+    isCreatingClaim.value = false
   }
+}
+
+// (orderClaims, fetchOrderClaims는 위에서 fetchClaims로 통합됨)
+
+// 초기 로드
+onMounted(async () => {
+  await fetchOrder()
+  // 클레임 정보 항상 조회
+  fetchClaims()
 })
 </script>
 
@@ -690,7 +1131,7 @@ onMounted(() => {
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <h1 class="text-2xl font-bold text-neutral-900">
-            {{ fromClaims && claimType ? `${claimTypeMap[claimType]?.label || claimType} 상세` : '주문 상세' }}
+            {{ selectedClaim ? `${claimTypeMap[selectedClaim.claimType]?.label || selectedClaim.claimType} 상세` : '주문 상세' }}
           </h1>
         </div>
       </div>
@@ -722,9 +1163,10 @@ onMounted(() => {
 
           <!-- Amount Summary -->
           <div class="flex gap-6 md:gap-8 text-center">
-            <div>
-              <p class="text-2xl font-bold text-primary-600">{{ formatCurrency(order.summary?.grandTotal) }}</p>
-              <p class="text-sm text-neutral-500">결제금액</p>
+            
+            <div v-if="selectedClaim?.actualRefundAmount != null">
+              <p class="text-2xl font-bold text-error-500">{{ formatCurrency(selectedClaim.actualRefundAmount) }}</p>
+              <p class="text-sm text-neutral-500">환불금액</p>
             </div>
             <div>
               <p class="text-2xl font-bold text-neutral-900">{{ order.items?.length || 0 }}건</p>
@@ -734,27 +1176,58 @@ onMounted(() => {
         </div>
       </UiCard>
 
-      <!-- 클레임 정보 카드 (클레임에서 진입 시) -->
-      <UiCard v-if="fromClaims && claimDetail" class="mb-6">
+      <!-- 클레임 정보 섹션 (클레임이 있으면 항상 표시) -->
+      <UiCard v-if="hasClaims" class="mb-6">
         <template #header>
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <h3 class="font-semibold text-neutral-900">클레임 정보</h3>
-              <UiBadge :variant="claimTypeMap[claimDetail.claimType]?.variant || 'neutral'" size="sm">
-                {{ claimTypeMap[claimDetail.claimType]?.label || claimDetail.claimType }}
-              </UiBadge>
+              <span class="text-sm text-neutral-500">({{ orderClaims.length }}건)</span>
             </div>
             <UiButton
-              :variant="canOpenClaimModal ? 'primary' : 'outline'"
+              v-if="selectedClaim && canOpenClaimModal"
+              variant="primary"
               size="sm"
-              :disabled="!canOpenClaimModal"
               @click="openClaimModal"
             >
-              {{ canOpenClaimModal ? '클레임 처리' : '처리 완료' }}
+              클레임 처리
             </UiButton>
           </div>
         </template>
-        <UiDescriptionList :items="claimInfoItems">
+
+        <!-- 클레임 탭 (여러 개일 때) -->
+        <div v-if="orderClaims.length > 1" class="flex gap-2 mb-4 pb-4 border-b border-neutral-200 overflow-x-auto">
+          <button
+            v-for="claim in orderClaims"
+            :key="claim.claimId"
+            type="button"
+            :class="[
+              'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
+              selectedClaimId == claim.claimId || (!selectedClaimId && orderClaims[0]?.claimId === claim.claimId)
+                ? 'bg-primary-100 text-primary-700 border border-primary-300'
+                : 'bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-neutral-100'
+            ]"
+            @click="selectClaim(claim.claimId)"
+          >
+            <UiBadge :variant="claimTypeMap[claim.claimType]?.variant || 'neutral'" size="sm">
+              {{ claimTypeMap[claim.claimType]?.label || claim.claimType }}
+            </UiBadge>
+            <span>{{ claimStatusMap[claim.status]?.label || claim.status }}</span>
+          </button>
+        </div>
+
+        <!-- 선택된 클레임 헤더 (단일 클레임일 때) -->
+        <div v-else-if="selectedClaim" class="flex items-center gap-2 mb-4">
+          <UiBadge :variant="claimTypeMap[selectedClaim.claimType]?.variant || 'neutral'" size="sm">
+            {{ claimTypeMap[selectedClaim.claimType]?.label || selectedClaim.claimType }}
+          </UiBadge>
+          <UiBadge :variant="claimStatusMap[selectedClaim.status]?.variant || 'neutral'" size="sm">
+            {{ claimStatusMap[selectedClaim.status]?.label || selectedClaim.status }}
+          </UiBadge>
+        </div>
+
+        <!-- 선택된 클레임 상세 -->
+        <UiDescriptionList v-if="selectedClaim" :items="claimInfoItems">
           <template #value-claimType="{ item }">
             <span class="font-medium">{{ claimTypeMap[item.value]?.label || item.value }}</span>
           </template>
@@ -767,11 +1240,11 @@ onMounted(() => {
             <span
               :class="claimDetail?.claimType === 'EXCHANGE' && claimDetail?.refundAmount === 0
                 ? 'text-sm text-neutral-400'
-                : 'text-lg font-bold text-error-500'"
+                : 'text-sm font-bold text-error-500'"
             >{{ item.value }}</span>
           </template>
           <template #value-actualRefundAmount="{ item }">
-            <span class="text-lg font-bold text-success-600">{{ item.value }}</span>
+            <span class="text-sm font-bold text-success-600">{{ item.value }}</span>
           </template>
           <template #value-returnShipping="{ item }">
             <a v-if="item.url" :href="item.url" target="_blank" rel="noopener" class="underline text-neutral-700 hover:text-neutral-900">
@@ -786,11 +1259,24 @@ onMounted(() => {
             <span v-else>{{ item.value }}</span>
           </template>
           <template #value-claimItems="{ item }">
-            <div v-if="item.value?.length" class="space-y-1">
-              <div v-for="(ci, idx) in item.value" :key="idx" class="text-sm text-neutral-700">
-                {{ ci.productName }}
-                <span v-if="ci.variantName" class="text-neutral-500">({{ ci.variantName }})</span>
-                <span class="text-neutral-500"> x {{ ci.quantity }}</span>
+            <div v-if="item.value?.length" class="space-y-2">
+              <div v-for="(ci, idx) in item.value" :key="idx" class="text-sm">
+                <!-- 원래 상품 -->
+                <div class="text-neutral-700">
+                  {{ ci.productName }}
+                  <span v-if="ci.variantName" class="text-neutral-500">({{ ci.variantName }})</span>
+                  <span class="text-neutral-500"> x {{ ci.quantity }}</span>
+                </div>
+                <!-- 교환 요청 상품 (있을 경우) -->
+                <div v-if="ci.exchangeVariantId" class="flex items-center gap-2 mt-1 pl-2 border-l-2 border-warning-300">
+                  <svg class="w-4 h-4 text-warning-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                  <span class="text-warning-700">
+                    {{ ci.exchangeProductName }}
+                    <span v-if="ci.exchangeVariantName" class="text-warning-600">({{ ci.exchangeVariantName }})</span>
+                  </span>
+                </div>
               </div>
             </div>
             <span v-else class="text-neutral-400">-</span>
@@ -799,7 +1285,7 @@ onMounted(() => {
       </UiCard>
 
       <!-- 클레임 정보 로딩 -->
-      <div v-else-if="fromClaims && isClaimLoading" class="mb-6 flex items-center justify-center py-8">
+      <div v-else-if="isClaimLoading" class="mb-6 flex items-center justify-center py-8">
         <UiSpinner size="md" />
       </div>
 
@@ -849,36 +1335,135 @@ onMounted(() => {
               <h3 class="font-semibold text-neutral-900">배송지 정보</h3>
               <div class="flex items-center gap-2">
                 <UiButton
-                  v-if="canRefreshDelivery"
-                  variant="outline"
+                  v-if="canCreateShipment"
+                  variant="primary"
                   size="sm"
-                  :loading="isRefreshingDelivery"
-                  title="배송 정보 갱신"
-                  @click="refreshDelivery"
+                  @click="openShipmentModal"
                 >
-                  <svg class="w-4 h-4 md:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  <span class="hidden md:inline">배송 갱신</span>
+                  발송 등록
                 </UiButton>
                 <UiButton
-                  :variant="canOpenStatusModal ? 'primary' : 'outline'"
+                  v-if="canOpenStatusModal"
+                  variant="outline"
                   size="sm"
-                  :disabled="!canOpenStatusModal"
                   @click="openStatusModal"
                 >
-                  {{ canOpenStatusModal ? '상태 변경' : '변경 불가' }}
+                  상태 변경
+                </UiButton>
+                <UiButton
+                  v-if="isPostDelivery"
+                  variant="warning"
+                  size="sm"
+                  @click="openCreateClaimModal"
+                >
+                  클레임 생성
                 </UiButton>
               </div>
             </div>
           </template>
-          <UiDescriptionList :items="shippingInfoItems">
-            <template #value-tracking="{ item }">
-              <span class="font-mono">{{ item.value }}</span>
-            </template>
-          </UiDescriptionList>
+          <UiDescriptionList :items="shippingAddressItems" />
         </UiCard>
       </div>
+
+      <!-- 배송 현황 (shipments) -->
+      <UiCard v-if="shipments.length > 0" class="mb-6">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <h3 class="font-semibold text-neutral-900">배송 현황</h3>
+              <span v-if="shipments.length > 1" class="text-sm text-neutral-500">({{ shipments.length }}건)</span>
+            </div>
+            <UiButton
+              v-if="canRefreshDelivery"
+              variant="outline"
+              size="sm"
+              :loading="isRefreshingDelivery"
+              :title="`배송중 ${inTransitShipmentCount}건 갱신`"
+              @click="refreshDelivery"
+            >
+              <svg class="w-4 h-4 md:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span class="hidden md:inline">배송중 갱신{{ inTransitShipmentCount > 1 ? ` (${inTransitShipmentCount}건)` : '' }}</span>
+            </UiButton>
+          </div>
+        </template>
+
+        <!-- 배송 탭 (여러 건일 때) -->
+        <div v-if="shipments.length > 1" class="flex gap-2 mb-4 pb-4 border-b border-neutral-200 overflow-x-auto">
+          <button
+            v-for="(shipment, index) in shipments"
+            :key="shipment.shipmentId || index"
+            type="button"
+            :class="[
+              'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
+              selectedShipmentIndex === index
+                ? 'bg-primary-100 text-primary-700 border border-primary-300'
+                : 'bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-neutral-100'
+            ]"
+            @click="selectedShipmentIndex = index"
+          >
+            <UiBadge :variant="shipmentStatusMap[shipment.status]?.variant || 'neutral'" size="sm">
+              {{ shipmentStatusMap[shipment.status]?.label || shipment.status || '배송' }}
+            </UiBadge>
+            <span class="text-xs text-neutral-600">
+              {{ shipment.shipmentNumber || shipment.trackingNumber }}
+            </span>
+          </button>
+        </div>
+
+        <!-- 선택된 배송 정보 -->
+        <UiDescriptionList v-if="selectedShipment" :items="shippingInfoItems">
+          <template #value-shipmentStatus="{ item }">
+            <UiBadge :variant="shipmentStatusMap[item.value]?.variant || 'neutral'" size="sm">
+              {{ shipmentStatusMap[item.value]?.label || item.value }}
+            </UiBadge>
+          </template>
+          <template #value-tracking="{ item }">
+            <a
+              v-if="item.url"
+              :href="item.url"
+              target="_blank"
+              rel="noopener"
+              class="font-mono text-primary-600 hover:text-primary-700 underline"
+            >
+              {{ item.value }}
+            </a>
+            <span v-else class="font-mono">{{ item.value }}</span>
+          </template>
+        </UiDescriptionList>
+
+        <!-- 배송된 상품 목록 -->
+        <div v-if="selectedShipment?.items?.length" class="mt-4 pt-4 border-t border-neutral-200">
+          <p class="text-sm font-medium text-neutral-700 mb-2">배송 상품 ({{ selectedShipment.items.length }}건)</p>
+          <div class="space-y-2">
+            <div
+              v-for="(shipItem, idx) in selectedShipment.items"
+              :key="idx"
+              class="flex items-center gap-3 text-sm"
+            >
+              <div class="w-10 h-10 bg-neutral-100 rounded border border-neutral-200 flex-shrink-0 overflow-hidden">
+                <img
+                  v-if="getOrderItemById(shipItem.orderItemId)?.imageUrl"
+                  :src="getOrderItemById(shipItem.orderItemId).imageUrl"
+                  :alt="getOrderItemById(shipItem.orderItemId)?.productName"
+                  class="w-full h-full object-cover"
+                >
+                <div v-else class="w-full h-full flex items-center justify-center">
+                  <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="font-medium text-neutral-900 truncate">{{ getOrderItemById(shipItem.orderItemId)?.productName || `상품 #${shipItem.orderItemId}` }}</p>
+                <p v-if="getOrderItemById(shipItem.orderItemId)?.variantName" class="text-neutral-500 text-xs">{{ getOrderItemById(shipItem.orderItemId).variantName }}</p>
+              </div>
+              <span class="text-neutral-600">x{{ shipItem.quantity }}</span>
+            </div>
+          </div>
+        </div>
+      </UiCard>
 
       <!-- 주문 상품 목록 -->
       <UiCard class="mb-6" padding="none">
@@ -895,6 +1480,7 @@ onMounted(() => {
               <tr class="border-b border-neutral-200 bg-neutral-50">
                 <th class="text-left py-3 px-4 text-sm font-medium text-neutral-600">상품정보</th>
                 <th class="text-center py-3 px-4 text-sm font-medium text-neutral-600 w-24">수량</th>
+                <th class="text-center py-3 px-4 text-sm font-medium text-neutral-600 w-28">배송상태</th>
                 <th class="text-right py-3 px-4 text-sm font-medium text-neutral-600 w-32">단가</th>
                 <th class="text-right py-3 px-4 text-sm font-medium text-neutral-600 w-32">금액</th>
               </tr>
@@ -903,7 +1489,10 @@ onMounted(() => {
               <tr
                 v-for="(item, index) in order.items"
                 :key="index"
-                class="border-b border-neutral-100"
+                :class="[
+                  'border-b border-neutral-100',
+                  isClaimedItem(item) ? 'opacity-50' : ''
+                ]"
               >
                 <td class="py-4 px-4">
                   <div class="flex items-center gap-3">
@@ -921,17 +1510,28 @@ onMounted(() => {
                       </div>
                     </div>
                     <div>
-                      <p class="text-sm font-medium text-neutral-900">{{ item.productName }}</p>
-                      <p v-if="item.variantName" class="text-xs text-neutral-500">{{ item.variantName }}</p>
+                      <p :class="['text-sm font-medium', isStrikethroughItem(item) ? 'line-through text-neutral-400' : 'text-neutral-900']">{{ item.productName }}</p>
+                      <p v-if="item.variantName" :class="['text-xs', isStrikethroughItem(item) ? 'line-through text-neutral-400' : 'text-neutral-500']">{{ item.variantName }}</p>
                       <p v-if="item.options?.length" class="text-xs text-neutral-500">
                         {{ item.options.join(' / ') }}
                       </p>
+                      <UiBadge v-if="isClaimedItem(item)" :variant="claimTypeMap[claimDetail?.claimType]?.variant || 'neutral'" size="sm" class="mt-1">
+                        {{ claimTypeMap[claimDetail?.claimType]?.label || claimDetail?.claimType }}
+                      </UiBadge>
                     </div>
                   </div>
                 </td>
-                <td class="py-4 px-4 text-center text-sm text-neutral-700">{{ item.quantity }}</td>
-                <td class="py-4 px-4 text-right text-sm text-neutral-600">{{ formatCurrency(item.unitPrice) }}</td>
-                <td class="py-4 px-4 text-right text-sm font-medium text-neutral-900">{{ formatCurrency(item.subtotal) }}</td>
+                <td :class="['py-4 px-4 text-center text-sm', isStrikethroughItem(item) ? 'line-through text-neutral-400' : 'text-neutral-700']">{{ item.quantity }}</td>
+                <td class="py-4 px-4 text-center">
+                  <UiBadge
+                    :variant="orderItemStatusMap[item.orderItemStatus]?.variant || 'neutral'"
+                    size="sm"
+                  >
+                    {{ orderItemStatusMap[item.orderItemStatus]?.label || item.orderItemStatus }}
+                  </UiBadge>
+                </td>
+                <td :class="['py-4 px-4 text-right text-sm', isStrikethroughItem(item) ? 'line-through text-neutral-400' : 'text-neutral-600']">{{ formatCurrency(item.unitPrice) }}</td>
+                <td :class="['py-4 px-4 text-right text-sm font-medium', isStrikethroughItem(item) ? 'line-through text-neutral-400' : 'text-neutral-900']">{{ formatCurrency(item.subtotal) }}</td>
               </tr>
             </tbody>
           </table>
@@ -942,7 +1542,7 @@ onMounted(() => {
           <div
             v-for="(item, index) in order.items"
             :key="index"
-            class="p-4"
+            :class="['p-4', isClaimedItem(item) ? 'opacity-50' : '']"
           >
             <div class="flex gap-3">
               <div class="w-16 h-16 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden">
@@ -959,11 +1559,22 @@ onMounted(() => {
                 </div>
               </div>
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-neutral-900">{{ item.productName }}</p>
-                <p v-if="item.variantName" class="text-xs text-neutral-500">{{ item.variantName }}</p>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <p :class="['text-sm font-medium', isStrikethroughItem(item) ? 'line-through text-neutral-400' : 'text-neutral-900']">{{ item.productName }}</p>
+                  <UiBadge v-if="isClaimedItem(item)" :variant="claimTypeMap[claimDetail?.claimType]?.variant || 'neutral'" size="sm">
+                    {{ claimTypeMap[claimDetail?.claimType]?.label || claimDetail?.claimType }}
+                  </UiBadge>
+                  <UiBadge
+                    :variant="orderItemStatusMap[item.orderItemStatus]?.variant || 'neutral'"
+                    size="sm"
+                  >
+                    {{ orderItemStatusMap[item.orderItemStatus]?.label || item.orderItemStatus }}
+                  </UiBadge>
+                </div>
+                <p v-if="item.variantName" :class="['text-xs', isStrikethroughItem(item) ? 'line-through text-neutral-400' : 'text-neutral-500']">{{ item.variantName }}</p>
                 <div class="flex items-center justify-between mt-2">
-                  <span class="text-sm text-neutral-600">{{ item.quantity }}개 x {{ formatCurrency(item.unitPrice) }}</span>
-                  <span class="text-sm font-semibold text-neutral-900">{{ formatCurrency(item.subtotal) }}</span>
+                  <span :class="['text-sm', isStrikethroughItem(item) ? 'line-through text-neutral-400' : 'text-neutral-600']">{{ item.quantity }}개 x {{ formatCurrency(item.unitPrice) }}</span>
+                  <span :class="['text-sm font-semibold', isStrikethroughItem(item) ? 'line-through text-neutral-400' : 'text-neutral-900']">{{ formatCurrency(item.subtotal) }}</span>
                 </div>
               </div>
             </div>
@@ -977,54 +1588,93 @@ onMounted(() => {
               <dt class="text-neutral-500">상품 합계</dt>
               <dd class="text-neutral-900">{{ formatCurrency(order.summary?.subtotal) }}</dd>
             </div>
-            <div v-if="order.summary?.discountTotal > 0" class="flex justify-between text-sm">
-              <dt class="text-neutral-500">할인</dt>
-              <dd class="text-error-600">-{{ formatCurrency(order.summary.discountTotal) }}</dd>
-            </div>
             <div class="flex justify-between text-sm">
               <dt class="text-neutral-500">배송비</dt>
               <dd class="text-neutral-900">
                 {{ order.summary?.shippingTotal === 0 ? '무료' : formatCurrency(order.summary?.shippingTotal) }}
               </dd>
             </div>
+            <div v-if="selectedClaim?.actualRefundAmount != null" class="flex justify-between text-sm">
+              <dt class="text-neutral-500">환불 금액</dt>
+              <dd class="font-medium text-error-500">-{{ formatCurrency(selectedClaim.actualRefundAmount) }}</dd>
+            </div>
             <div class="flex justify-between pt-2 border-t border-neutral-300">
               <dt class="text-base font-semibold text-neutral-900">결제 금액</dt>
-              <dd class="text-lg font-bold text-primary-600">{{ formatCurrency(order.summary?.grandTotal) }}</dd>
+              <dd class="text-lg font-bold text-primary-600">
+                {{ selectedClaim?.actualRefundAmount != null
+                  ? formatCurrency(order.summary?.grandTotal - selectedClaim.actualRefundAmount)
+                  : formatCurrency(order.summary?.grandTotal)
+                }}
+              </dd>
             </div>
           </dl>
         </div>
       </UiCard>
 
-      <!-- 주문 이력 -->
-      <UiCard v-if="order.history?.length">
+      <!-- 주문/클레임 통합 이력 -->
+      <UiCard v-if="order.combinedHistory?.length || order.history?.length">
         <template #header>
           <h3 class="font-semibold text-neutral-900">주문 이력</h3>
         </template>
         <ul class="space-y-6">
           <li
-            v-for="(history, index) in order.history"
+            v-for="(history, index) in (order.combinedHistory || order.history)"
             :key="index"
             class="relative flex gap-4"
           >
             <!-- 아이콘 + 세로선 -->
             <div class="flex flex-col items-center">
-              <div class="w-3 h-3 rounded-full bg-primary-500 ring-4 ring-primary-100 flex-shrink-0" />
               <div
-                v-if="index < order.history.length - 1"
+                :class="[
+                  'w-3 h-3 rounded-full flex-shrink-0 ring-4',
+                  history.type === 'CLAIM'
+                    ? history.claimType === 'EXCHANGE'
+                      ? 'bg-warning-500 ring-warning-100'
+                      : history.claimType === 'RETURN'
+                        ? 'bg-error-500 ring-error-100'
+                        : 'bg-neutral-500 ring-neutral-100'
+                    : 'bg-primary-500 ring-primary-100'
+                ]"
+              />
+              <div
+                v-if="index < (order.combinedHistory || order.history).length - 1"
                 class="w-0.5 flex-1 bg-neutral-200 mt-2"
               />
             </div>
             <!-- 내용 -->
             <div class="flex-1 pb-2">
-              <p class="text-sm font-medium text-neutral-900">
-                {{ history.fromStatus ? `${statusMap[history.fromStatus]?.label || history.fromStatus} → ` : '' }}
-                {{ statusMap[history.toStatus]?.label || history.toStatus }}
-              </p>
-              <p class="text-xs text-neutral-500">
-                {{ formatDate(history.createdAt) }}
+              <div class="flex items-center gap-2">
+                <!-- 클레임 타입 뱃지 -->
+                <UiBadge
+                  v-if="history.type === 'CLAIM' && history.claimType"
+                  :variant="claimTypeMap[history.claimType]?.variant || 'neutral'"
+                  size="sm"
+                >
+                  {{ claimTypeMap[history.claimType]?.label || history.claimType }}
+                </UiBadge>
+                <!-- 상태 텍스트 (fromStatus → toStatus) -->
+                <p class="text-sm font-medium text-neutral-900">
+                  <template v-if="history.type === 'CLAIM'">
+                    <template v-if="history.fromStatus">
+                      {{ claimStatusMap[history.fromStatus]?.label || history.fromStatus }}
+                      <span class="text-neutral-400 mx-1">→</span>
+                    </template>
+                    {{ claimStatusMap[history.toStatus]?.label || history.toStatus }}
+                  </template>
+                  <template v-else>
+                    <template v-if="history.fromStatus">
+                      {{ statusMap[history.fromStatus]?.label || history.fromStatus }}
+                      <span class="text-neutral-400 mx-1">→</span>
+                    </template>
+                    {{ statusMap[history.toStatus]?.label || history.toStatus }}
+                  </template>
+                </p>
+              </div>
+              <p class="text-xs text-neutral-500 mt-0.5">
+                {{ formatDate(history.createdAt, 'long') }}
                 <span v-if="history.createdByName"> · {{ history.createdByName }}</span>
               </p>
-              <p v-if="history.reason" class="text-sm text-neutral-600 mt-1">{{ history.reason }}</p>
+              <p v-if="history.note" class="text-sm text-neutral-600 mt-1">{{ history.note }}</p>
             </div>
           </li>
         </ul>
@@ -1104,6 +1754,14 @@ onMounted(() => {
           주문 <span class="font-medium text-neutral-900">{{ order?.orderNumber }}</span>의 상태를 변경합니다.
         </p>
 
+        <!-- 상품준비중일 때 발송 등록 안내 -->
+        <div v-if="order?.status === 'PREPARING'" class="mb-4 p-3 bg-info-50 border border-info-200 rounded-lg">
+          <p class="text-sm text-info-700">
+            <span class="font-medium">배송중</span> 전환은
+            <span class="font-medium">발송 등록</span> 버튼을 이용해주세요.
+          </p>
+        </div>
+
         <div class="space-y-2">
           <label
             v-for="option in statusOptions"
@@ -1135,60 +1793,35 @@ onMounted(() => {
           </p>
         </div>
 
-        <!-- 배송중 선택 시 송장번호 입력 -->
-        <div v-if="isShippingSelected" class="mt-4 p-4 bg-neutral-50 rounded-lg space-y-3">
-          <p class="text-sm font-medium text-neutral-700">송장 정보 입력</p>
+        <!-- 취소 선택 시 정보 입력 -->
+        <div v-if="isCancelSelected" class="mt-4 p-4 bg-error-50 rounded-lg space-y-3">
+          <p class="text-sm font-medium text-error-700">주문 취소</p>
+          <p class="text-xs text-error-600">배송 전 주문을 취소합니다. 전체 주문이 취소됩니다.</p>
           <div>
-            <label class="block text-sm text-neutral-600 mb-1">택배사 <span class="text-error-500">*</span></label>
+            <label class="block text-sm text-neutral-600 mb-1">취소 사유 유형 <span class="text-error-500">*</span></label>
             <select
-              v-model="selectedCarrierId"
+              v-model="cancelReasonType"
               class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             >
-              <option value="">택배사 선택</option>
-              <option v-for="carrier in carriers" :key="carrier.id" :value="carrier.id">
-                {{ carrier.name }}
+              <option value="">사유 유형 선택</option>
+              <option v-for="opt in cancelReasonOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
               </option>
             </select>
           </div>
           <div>
-            <label class="block text-sm text-neutral-600 mb-1">송장번호 <span class="text-error-500">*</span></label>
-            <input
-              v-model="trackingNumber"
-              type="text"
-              placeholder="송장번호를 입력하세요"
-              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            >
-          </div>
-          <p v-if="!selectedCarrierId || !trackingNumber.trim()" class="text-xs text-error-500">
-            배송중 상태로 변경하려면 택배사와 송장번호를 입력해야 합니다.
-          </p>
-        </div>
-
-        <!-- 환불 선택 시 환불 정보 입력 -->
-        <div v-if="isRefundSelected" class="mt-4 p-4 bg-neutral-50 rounded-lg space-y-3">
-          <p class="text-sm font-medium text-neutral-700">환불 정보</p>
-          <div>
-            <label class="block text-sm text-neutral-600 mb-1">환불 사유 <span class="text-error-500">*</span></label>
+            <label class="block text-sm text-neutral-600 mb-1">취소 상세 사유 <span class="text-error-500">*</span></label>
             <textarea
-              v-model="refundReason"
+              v-model="cancelReason"
               rows="2"
-              placeholder="환불 사유를 입력하세요"
+              placeholder="취소 사유를 입력하세요"
               class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
-          <div>
-            <label class="block text-sm text-neutral-600 mb-1">환불 금액</label>
-            <input
-              v-model="refundAmount"
-              type="number"
-              placeholder="미입력 시 전액 환불"
-              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            >
-          </div>
         </div>
 
-        <!-- 변경 사유 (환불 제외) -->
-        <div v-if="!isRefundSelected" class="mt-4">
+        <!-- 변경 사유 (취소 제외) -->
+        <div v-if="!isCancelSelected" class="mt-4">
           <label class="block text-sm text-neutral-600 mb-1">변경 사유</label>
           <input
             v-model="statusReason"
@@ -1252,7 +1885,7 @@ onMounted(() => {
     <!-- Claim Action Modal -->
     <UiModal
       v-model="showClaimModal"
-      :title="claimTypeMap[claimType]?.label + ' 처리'"
+      :title="(claimTypeMap[claimDetail?.claimType]?.label || '클레임') + ' 처리'"
       size="sm"
     >
       <!-- 변경 불가 -->
@@ -1307,6 +1940,17 @@ onMounted(() => {
           <UiBadge :variant="claimAvailableActions[0]?.variant" size="sm">
             {{ claimAvailableActions[0]?.label }}
           </UiBadge>
+        </div>
+
+        <!-- 반송장 미등록 안내 (승인/입고검수 선택 시) -->
+        <div
+          v-if="['approve', 'receive-inspect'].includes(claimAction) && ['EXCHANGE', 'RETURN'].includes(claimDetail?.claimType) && !(claimDetail?.returnShippingCarrier && claimDetail?.returnTrackingNumber)"
+          class="mb-4 p-3 bg-warning-50 border border-warning-200 rounded-lg"
+        >
+          <p class="text-sm text-warning-700">
+            <span class="font-medium">안내:</span> 반송장이 아직 등록되지 않았습니다.
+            {{ claimAction === 'approve' ? '승인 후에도 등록 가능합니다.' : '검수 후에도 등록 가능합니다.' }}
+          </p>
         </div>
 
         <!-- 거절 사유 (reject 선택 시) -->
@@ -1402,29 +2046,94 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 교환 완료 송장 입력 (exchange-complete 선택 시) -->
-        <div v-if="claimAction === 'exchange-complete'" class="p-4 bg-neutral-50 rounded-lg space-y-3">
-          <p class="text-sm font-medium text-neutral-700">교환 상품 송장 정보</p>
-          <div>
-            <label class="block text-sm text-neutral-600 mb-1">택배사 <span class="text-error-500">*</span></label>
-            <select
-              v-model="claimShippingCompany"
-              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            >
-              <option value="">택배사 선택</option>
-              <option v-for="carrier in carriers" :key="carrier.id" :value="carrier.name">
-                {{ carrier.name }}
-              </option>
-            </select>
+        <!-- 교환 완료 (exchange-complete 선택 시) -->
+        <div v-if="claimAction === 'exchange-complete'" class="space-y-4">
+          <!-- 반품 상품 (고객이 반송한 상품) -->
+          <div class="p-4 bg-neutral-50 rounded-lg">
+            <p class="text-sm font-medium text-neutral-700 mb-3">반품 상품 (고객 반송)</p>
+            <div class="space-y-2">
+              <div
+                v-for="(item, index) in claimDetail?.items || []"
+                :key="index"
+                class="flex items-center gap-3 p-2 bg-white rounded border border-neutral-200"
+              >
+                <img
+                  v-if="item.imageUrl"
+                  :src="item.imageUrl"
+                  :alt="item.productName"
+                  class="w-12 h-12 object-cover rounded"
+                >
+                <div class="w-12 h-12 bg-neutral-100 rounded flex items-center justify-center" v-else>
+                  <span class="text-neutral-400 text-xs">No img</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-neutral-900 truncate">{{ item.productName }}</p>
+                  <p v-if="item.variantName" class="text-xs text-neutral-500">{{ item.variantName }}</p>
+                </div>
+                <span class="text-sm text-neutral-600">x {{ item.quantity }}</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <label class="block text-sm text-neutral-600 mb-1">송장번호 <span class="text-error-500">*</span></label>
-            <input
-              v-model="claimTrackingNumber"
-              type="text"
-              placeholder="송장번호를 입력하세요"
-              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            >
+
+          <!-- 교환 발송 상품 (고객 요청 상품 - 읽기 전용) -->
+          <div class="p-4 bg-primary-50 border border-primary-200 rounded-lg">
+            <p class="text-sm font-medium text-primary-700 mb-3">교환 발송 상품 (재고 차감)</p>
+            <div class="space-y-2">
+              <div
+                v-for="(item, index) in exchangeItems"
+                :key="index"
+                class="flex items-center gap-3 p-2 bg-white rounded border border-neutral-200"
+              >
+                <img
+                  v-if="item.imageUrl"
+                  :src="item.imageUrl"
+                  :alt="item.productName"
+                  class="w-12 h-12 object-cover rounded"
+                >
+                <div class="w-12 h-12 bg-neutral-100 rounded flex items-center justify-center" v-else>
+                  <span class="text-neutral-400 text-xs">No img</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-neutral-900 truncate">{{ item.productName }}</p>
+                  <p v-if="item.variantName" class="text-xs text-neutral-500">{{ item.variantName }}</p>
+                  <UiBadge v-if="item.isSameProduct" variant="success" size="sm" class="mt-1">동일상품</UiBadge>
+                  <UiBadge v-else variant="warning" size="sm" class="mt-1">다른상품</UiBadge>
+                </div>
+                <span class="text-sm text-neutral-600 font-medium">x {{ item.quantity }}</span>
+              </div>
+            </div>
+            <p class="text-xs text-primary-600 mt-2">
+              <svg class="w-3.5 h-3.5 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              고객이 요청한 교환 상품입니다
+            </p>
+          </div>
+
+          <!-- 송장 정보 -->
+          <div class="p-4 bg-neutral-50 rounded-lg space-y-3">
+            <p class="text-sm font-medium text-neutral-700">송장 정보</p>
+            <div>
+              <label class="block text-sm text-neutral-600 mb-1">택배사 <span class="text-error-500">*</span></label>
+              <select
+                v-model="claimShippingCompany"
+                class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="">택배사 선택</option>
+                <option v-for="carrier in carriers" :key="carrier.id" :value="carrier.name">
+                  {{ carrier.name }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm text-neutral-600 mb-1">송장번호 <span class="text-error-500">*</span></label>
+              <input
+                v-model="claimTrackingNumber"
+                type="text"
+                placeholder="송장번호를 입력하세요"
+                class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+            </div>
           </div>
         </div>
 
@@ -1466,17 +2175,49 @@ onMounted(() => {
               class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
-          <div>
-            <label class="block text-sm text-neutral-600 mb-1">환불 금액</label>
-            <input
-              v-model="claimRefundAmount"
-              type="number"
-              :placeholder="claimDetail?.refundAmount != null ? `미입력 시 ${formatCurrency(claimDetail.refundAmount)} 전액 환불` : '미입력 시 전액 환불'"
-              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            >
-            <p v-if="claimDetail?.refundAmount != null" class="mt-1 text-xs text-neutral-500">
-              환불 금액: {{ formatCurrency(claimDetail.refundAmount) }}
+          <!-- 환불 예정 금액 표시 (수정 불가) -->
+          <div v-if="claimDetail?.refundAmount != null">
+            <label class="block text-sm text-neutral-600 mb-1">환불 예정 금액</label>
+            <p class="px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm font-medium text-error-500">
+              {{ formatCurrency(claimDetail.refundAmount) }}
             </p>
+          </div>
+          <!-- 배송비 차감 옵션 (반품/교환일 때) -->
+          <div v-if="['RETURN', 'EXCHANGE'].includes(claimDetail?.claimType)" class="mt-3">
+            <label class="block text-sm text-neutral-600 mb-1">
+              배송비 차감
+              <span class="text-xs text-neutral-400 ml-1">(배송비: {{ formatCurrency(order.summary?.shippingTotal || 0) }})</span>
+            </label>
+            <div class="flex items-center gap-4">
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  v-model="claimDeductShippingFee"
+                  type="radio"
+                  :value="null"
+                  class="w-4 h-4 text-primary-600"
+                >
+                <span class="text-sm text-neutral-700">자동</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  v-model="claimDeductShippingFee"
+                  type="radio"
+                  :value="true"
+                  class="w-4 h-4 text-primary-600"
+                >
+                <span class="text-sm text-neutral-700">차감</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  v-model="claimDeductShippingFee"
+                  type="radio"
+                  :value="false"
+                  class="w-4 h-4 text-primary-600"
+                >
+                <span class="text-sm text-neutral-700">면제</span>
+              </label>
+            </div>
+            <p v-if="claimDeductShippingFee === null" class="mt-1 text-xs text-neutral-500">단순변심 시 자동 차감됩니다</p>
           </div>
         </div>
 
@@ -1511,5 +2252,284 @@ onMounted(() => {
         </div>
       </template>
     </UiModal>
+
+    <!-- Shipment Modal (발송 등록 / 분할배송) -->
+    <UiModal
+      v-model="showShipmentModal"
+      title="발송 등록"
+      size="lg"
+    >
+      <p class="text-sm text-neutral-600 mb-4">
+        배송할 상품을 선택하고 송장 정보를 입력해주세요.
+        <span class="text-primary-600">분할배송</span>이 필요한 경우, 일부 상품만 선택하여 발송할 수 있습니다.
+      </p>
+
+      <!-- 송장 정보 입력 -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-neutral-50 rounded-lg">
+        <div>
+          <label class="block text-sm text-neutral-600 mb-1">택배사 <span class="text-error-500">*</span></label>
+          <select
+            v-model="shipmentCarrierId"
+            class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          >
+            <option value="">택배사 선택</option>
+            <option v-for="carrier in carriers" :key="carrier.id" :value="carrier.id">
+              {{ carrier.name }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-neutral-600 mb-1">송장번호 <span class="text-error-500">*</span></label>
+          <input
+            v-model="shipmentTrackingNumber"
+            type="text"
+            placeholder="송장번호를 입력하세요"
+            class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          >
+        </div>
+      </div>
+
+      <!-- 발송 상품 선택 -->
+      <div class="mb-2 flex items-center justify-between">
+        <p class="text-sm font-medium text-neutral-700">발송할 상품 선택</p>
+        <p class="text-xs text-neutral-500">
+          선택: {{ selectedShipmentItems.length }}건 / 전체: {{ shipmentItems.length }}건
+        </p>
+      </div>
+
+      <div class="space-y-3 max-h-80 overflow-y-auto">
+        <div
+          v-for="item in shipmentItems"
+          :key="item.orderItemId"
+          :class="[
+            'flex items-center gap-3 p-3 border rounded-lg transition-colors',
+            item.remainingQty <= 0
+              ? 'border-neutral-200 bg-neutral-50 opacity-50'
+              : item.selected
+                ? 'border-primary-300 bg-primary-50'
+                : 'border-neutral-200 hover:border-neutral-300 cursor-pointer',
+          ]"
+          @click="toggleShipmentItem(item)"
+        >
+          <!-- 체크박스 -->
+          <div class="flex-shrink-0">
+            <input
+              type="checkbox"
+              :checked="item.selected"
+              :disabled="item.remainingQty <= 0"
+              class="w-5 h-5 text-primary-600 rounded focus:ring-primary-500"
+              @click.stop
+              @change="toggleShipmentItem(item)"
+            >
+          </div>
+
+          <!-- 상품 이미지 -->
+          <div class="w-14 h-14 bg-neutral-100 rounded-lg flex-shrink-0 overflow-hidden">
+            <img
+              v-if="item.imageUrl"
+              :src="item.imageUrl"
+              :alt="item.productName"
+              class="w-full h-full object-cover"
+            >
+            <div v-else class="w-full h-full flex items-center justify-center">
+              <svg class="w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+          </div>
+
+          <!-- 상품 정보 -->
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-neutral-900 truncate">{{ item.productName }}</p>
+            <p v-if="item.variantName" class="text-xs text-neutral-500 truncate">{{ item.variantName }}</p>
+            <div class="flex items-center gap-2 mt-1 text-xs">
+              <span class="text-neutral-500">
+                주문: {{ item.totalQty }}개
+              </span>
+              <span v-if="item.shippedQty > 0" class="text-success-600">
+                발송완료: {{ item.shippedQty }}개
+              </span>
+              <span v-if="item.remainingQty > 0" class="text-primary-600">
+                미발송: {{ item.remainingQty }}개
+              </span>
+              <span v-else class="text-neutral-400">
+                전량발송완료
+              </span>
+            </div>
+          </div>
+
+          <!-- 발송 수량 입력 (미발송 상품만) -->
+          <div v-if="item.remainingQty > 0" class="flex-shrink-0 flex items-center gap-2" @click.stop>
+            <label class="text-xs text-neutral-600">발송수량</label>
+            <input
+              v-model.number="item.shipQty"
+              type="number"
+              :min="0"
+              :max="item.remainingQty"
+              class="w-16 px-2 py-1 border border-neutral-300 rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary-500"
+              @input="updateShipmentQty(item, $event.target.value)"
+            >
+            <span class="text-xs text-neutral-500">/ {{ item.remainingQty }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 발송 불가 안내 -->
+      <div v-if="!hasUnshippedItems" class="mt-4 p-3 bg-neutral-100 rounded-lg text-center">
+        <p class="text-sm text-neutral-600">모든 상품이 이미 발송되었습니다.</p>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <UiButton variant="outline" :disabled="isCreatingShipment" @click="showShipmentModal = false">
+            취소
+          </UiButton>
+          <UiButton
+            variant="primary"
+            :disabled="!canSubmitShipment"
+            :loading="isCreatingShipment"
+            @click="createShipment"
+          >
+            발송 등록
+          </UiButton>
+        </div>
+      </template>
+    </UiModal>
+
+    <!-- Create Claim Modal (배송 후 클레임 생성) -->
+    <UiModal
+      v-model="showCreateClaimModal"
+      title="클레임 생성"
+      size="md"
+    >
+      <p class="text-sm text-neutral-600 mb-4">
+        주문 <span class="font-medium text-neutral-900">{{ order?.orderNumber }}</span>에 대한 클레임을 생성합니다.
+      </p>
+
+      <!-- 클레임 유형 선택 -->
+      <div class="space-y-2 mb-4">
+        <p class="text-sm font-medium text-neutral-700">클레임 유형 <span class="text-error-500">*</span></p>
+        <div class="flex gap-3">
+          <label
+            :class="[
+              'flex-1 flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors',
+              newClaimType === 'RETURN' ? 'border-error-500 bg-error-50' : 'border-neutral-200 hover:border-neutral-300',
+            ]"
+          >
+            <input v-model="newClaimType" type="radio" value="RETURN" class="w-4 h-4 text-error-600 focus:ring-error-500">
+            <span class="font-medium text-sm">반품</span>
+          </label>
+          <label
+            :class="[
+              'flex-1 flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors',
+              newClaimType === 'EXCHANGE' ? 'border-warning-500 bg-warning-50' : 'border-neutral-200 hover:border-neutral-300',
+            ]"
+          >
+            <input v-model="newClaimType" type="radio" value="EXCHANGE" class="w-4 h-4 text-warning-600 focus:ring-warning-500">
+            <span class="font-medium text-sm">교환</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 사유 유형 -->
+      <div class="mb-4">
+        <label class="block text-sm text-neutral-600 mb-1">사유 유형 <span class="text-error-500">*</span></label>
+        <select
+          v-model="newClaimReasonType"
+          class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+        >
+          <option value="">사유 유형 선택</option>
+          <option v-for="opt in claimReasonOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+      </div>
+
+      <!-- 대상 상품 선택 -->
+      <div class="mb-4">
+        <label class="block text-sm text-neutral-600 mb-1">대상 상품 <span class="text-error-500">*</span></label>
+        <div class="space-y-2 max-h-60 overflow-y-auto">
+          <div
+            v-for="(item, idx) in newClaimItems"
+            :key="idx"
+            :class="[
+              'flex items-center gap-3 p-3 rounded-lg border transition-colors',
+              item.selected ? 'border-primary-300 bg-primary-50/50' : 'border-neutral-200 bg-white',
+            ]"
+          >
+            <input
+              v-model="item.selected"
+              type="checkbox"
+              class="w-4 h-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+            >
+            <div v-if="item.imageUrl" class="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+              <img :src="item.imageUrl" :alt="item.productName" class="w-full h-full object-cover">
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-neutral-900 truncate">{{ item.productName }}</p>
+              <p v-if="item.variantName" class="text-xs text-neutral-500">{{ item.variantName }}</p>
+            </div>
+            <div class="flex items-center gap-1 flex-shrink-0">
+              <button
+                type="button"
+                class="w-7 h-7 flex items-center justify-center rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
+                :disabled="!item.selected || item.quantity <= 1"
+                @click="item.quantity--"
+              >
+                -
+              </button>
+              <input
+                v-model.number="item.quantity"
+                type="number"
+                :min="1"
+                :max="item.maxQuantity"
+                :disabled="!item.selected"
+                class="w-10 h-7 text-center text-sm border border-neutral-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+              <button
+                type="button"
+                class="w-7 h-7 flex items-center justify-center rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
+                :disabled="!item.selected || item.quantity >= item.maxQuantity"
+                @click="item.quantity++"
+              >
+                +
+              </button>
+              <span class="text-xs text-neutral-400 ml-1">/{{ item.maxQuantity }}</span>
+            </div>
+          </div>
+        </div>
+        <p v-if="selectedNewClaimItems.length === 0" class="text-xs text-error-500 mt-1">
+          최소 1개 이상의 상품을 선택해주세요.
+        </p>
+      </div>
+
+      <!-- 상세 사유 -->
+      <div>
+        <label class="block text-sm text-neutral-600 mb-1">상세 사유 <span class="text-error-500">*</span></label>
+        <textarea
+          v-model="newClaimReason"
+          rows="3"
+          placeholder="고객이 요청한 클레임 사유를 상세히 입력하세요"
+          class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+        />
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <UiButton variant="outline" :disabled="isCreatingClaim" @click="showCreateClaimModal = false">
+            취소
+          </UiButton>
+          <UiButton
+            :variant="newClaimType === 'RETURN' ? 'error' : 'warning'"
+            :disabled="!canCreateClaim"
+            :loading="isCreatingClaim"
+            @click="executeCreateClaim"
+          >
+            클레임 생성
+          </UiButton>
+        </div>
+      </template>
+    </UiModal>
+
   </LayoutDetailPage>
 </template>

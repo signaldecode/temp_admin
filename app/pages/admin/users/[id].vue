@@ -58,7 +58,7 @@ const fetchUser = async () => {
     user.value = response.data
   } catch (err) {
     console.error('User fetch error:', err)
-    error.value = err.data?.message || err.message || '회원 정보를 불러오는데 실패했습니다.'
+    error.value = err.data?.error?.message || err.data?.message || err.message || '회원 정보를 불러오는데 실패했습니다.'
   } finally {
     isLoading.value = false
   }
