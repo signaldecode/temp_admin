@@ -3,70 +3,130 @@
  * FAQ 등록/수정 페이지
  * - /admin/contents/faq/new → 등록 모드
  * - /admin/contents/faq/:id → 수정 모드
+ *
+ * API:
+ * POST /admin/faqs { categoryId, question, answer }
+ * GET /admin/faqs/:id
+ * PATCH /admin/faqs/:id { categoryId, question, answer }
+ * DELETE /admin/faqs/:id
  */
 
 import { useUiStore } from '~/stores/ui'
+import { useApi } from '~/composables/useApi'
 
 const route = useRoute()
 const router = useRouter()
 const uiStore = useUiStore()
+const { get, post, patch, del } = useApi()
 
 // 모드 판별
 const isEditMode = computed(() => route.params.id !== 'new')
+const faqId = computed(() => route.params.id)
 
-const categoryOptions = [
-  { value: 'order', label: '주문/결제' },
-  { value: 'shipping', label: '배송' },
-  { value: 'return', label: '교환/반품' },
-  { value: 'member', label: '회원' },
-  { value: 'etc', label: '기타' },
-]
+// 카테고리 목록
+const categories = ref([])
 
 const form = ref({
+  categoryId: '',
   question: '',
   answer: '',
-  category: 'order',
 })
 
 const isLoading = ref(false)
 const isSaving = ref(false)
 
-const fetchFaq = async () => {
-  isLoading.value = true
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  form.value = {
-    question: '배송비는 얼마인가요?',
-    answer: '기본 배송비는 3,000원이며, 50,000원 이상 구매 시 무료배송입니다.\n\n제주 및 도서산간 지역은 추가 배송비가 발생할 수 있습니다.',
-    category: 'shipping',
+// 카테고리 목록 조회
+const fetchCategories = async () => {
+  try {
+    const response = await get('/admin/faqs/categories')
+    categories.value = response.data || []
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '카테고리 목록을 불러오는데 실패했습니다.',
+    })
   }
-  isLoading.value = false
 }
 
+// FAQ 상세 조회
+const fetchFaq = async () => {
+  isLoading.value = true
+  try {
+    const response = await get(`/admin/faqs/${faqId.value}`)
+    const data = response.data
+
+    form.value = {
+      categoryId: data.categoryId || '',
+      question: data.question || '',
+      answer: data.answer || '',
+    }
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || 'FAQ를 불러오는데 실패했습니다.',
+    })
+    router.push('/admin/contents/faq')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 저장
 const handleSave = async () => {
   if (!form.value.question) {
     uiStore.showToast({ type: 'error', message: '질문을 입력해주세요.' })
     return
   }
-  isSaving.value = true
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  if (!form.value.categoryId) {
+    uiStore.showToast({ type: 'error', message: '카테고리를 선택해주세요.' })
+    return
+  }
 
-  uiStore.showToast({
-    type: 'success',
-    message: isEditMode.value ? 'FAQ가 수정되었습니다.' : 'FAQ가 등록되었습니다.',
-  })
-  router.push('/admin/contents/faq')
+  isSaving.value = true
+  try {
+    const requestData = {
+      categoryId: Number(form.value.categoryId),
+      question: form.value.question,
+      answer: form.value.answer,
+    }
+
+    if (isEditMode.value) {
+      await patch(`/admin/faqs/${faqId.value}`, requestData)
+      uiStore.showToast({ type: 'success', message: 'FAQ가 수정되었습니다.' })
+    } else {
+      await post('/admin/faqs', requestData)
+      uiStore.showToast({ type: 'success', message: 'FAQ가 등록되었습니다.' })
+    }
+    router.push('/admin/contents/faq')
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '저장에 실패했습니다.',
+    })
+  } finally {
+    isSaving.value = false
+  }
 }
 
+// 삭제
 const handleDelete = async () => {
   if (!confirm('이 FAQ를 삭제하시겠습니까?')) return
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  uiStore.showToast({ type: 'success', message: '삭제되었습니다.' })
-  router.push('/admin/contents/faq')
+  try {
+    await del(`/admin/faqs/${faqId.value}`)
+    uiStore.showToast({ type: 'success', message: '삭제되었습니다.' })
+    router.push('/admin/contents/faq')
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '삭제에 실패했습니다.',
+    })
+  }
 }
 
 const handleCancel = () => router.back()
 
-onMounted(() => {
+onMounted(async () => {
+  await fetchCategories()
   if (isEditMode.value) {
     fetchFaq()
   }
@@ -91,9 +151,15 @@ onMounted(() => {
       <UiCard title="FAQ 정보">
         <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">분류</label>
-            <select v-model="form.category" class="w-full md:w-1/2 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-              <option v-for="opt in categoryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">
+              카테고리 <span class="text-error-500">*</span>
+            </label>
+            <select
+              v-model="form.categoryId"
+              class="w-full md:w-1/2 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="" disabled>카테고리를 선택하세요</option>
+              <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
             </select>
           </div>
           <div>

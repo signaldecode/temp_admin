@@ -38,7 +38,7 @@ export const navigationItems = [
     icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>',
     children: [
       { id: 'users-list', label: '회원 목록', to: '/admin/users' },
-      // { id: 'users-grades', label: '회원 등급', to: '/admin/users/grades' },
+      { id: 'users-grades', label: '회원 등급', to: '/admin/users/grades' },
     ],
   },
   {
@@ -53,15 +53,15 @@ export const navigationItems = [
       { id: 'contents-qna', label: 'Q&A', to: '/admin/contents/qna' },
     ],
   },
-  // {
-  //   id: 'promotions',
-  //   label: '프로모션 관리',
-  //   icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
-  //   children: [
-  //     { id: 'promotions-discounts', label: '할인 관리', to: '/admin/promotions/discounts' },
-  //     { id: 'promotions-coupons', label: '쿠폰 관리', to: '/admin/promotions/coupons' },
-  //   ],
-  // },
+  {
+    id: 'promotions',
+    label: '프로모션 관리',
+    icon: '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    children: [
+      { id: 'promotions-discounts', label: '할인 관리', to: '/admin/promotions/discounts' },
+      // { id: 'promotions-coupons', label: '쿠폰 관리', to: '/admin/promotions/coupons' },
+    ],
+  },
   // {
   //   id: 'statistics',
   //   label: '통계',
@@ -75,7 +75,7 @@ export const navigationItems = [
     children: [
       { id: 'settings-general', label: '기본 설정', to: '/admin/settings' },
       { id: 'settings-policies', label: '정책 설정', to: '/admin/settings/policies' },
-      { id: 'settings-admins', label: '관리자 계정', to: '/admin/settings/admins' },
+      // { id: 'settings-admins', label: '관리자 계정', to: '/admin/settings/admins' },
     ],
   },
 ]
