@@ -30,10 +30,22 @@ const order = ref({
   maxOrderQuantity: 99,
   cancelHours: 24,
   autoConfirmDays: 7,
+  // 적립금 정책
+  pointEnabled: true,
   pointRate: 1,
   pointMinOrder: 10000,
   pointMinUse: 1000,
+  pointMaxUseRate: 100,
+  pointExpirationType: 'UNLIMITED',
 })
+
+// 적립금 유효기간 옵션
+const pointExpirationOptions = [
+  { value: '1_YEAR', label: '1년' },
+  { value: '2_YEARS', label: '2년' },
+  { value: '3_YEARS', label: '3년' },
+  { value: 'UNLIMITED', label: '무기한' },
+]
 
 const delivery = ref({
   freeShippingAmount: 50000,
@@ -242,47 +254,114 @@ onMounted(() => {
 
         <UiCard>
           <template #header>
-            <h3 class="font-semibold text-neutral-900">적립금 정책</h3>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5">
+                <h3 class="font-semibold text-neutral-900">적립금 정책</h3>
+                <UiTooltip content="구매 확정 후 적립금이 지급됩니다." position="top" />
+              </div>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <span class="text-sm text-neutral-600">적립금 기능 사용</span>
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="order.pointEnabled"
+                  :class="[
+                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                    order.pointEnabled ? 'bg-primary-600' : 'bg-neutral-200',
+                  ]"
+                  @click="order.pointEnabled = !order.pointEnabled"
+                >
+                  <span
+                    :class="[
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                      order.pointEnabled ? 'translate-x-5' : 'translate-x-0',
+                    ]"
+                  />
+                </button>
+              </label>
+            </div>
           </template>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">
-                기본 적립율
-              </label>
-              <div class="flex items-center gap-2">
-                <input
-                  v-model.number="order.pointRate"
-                  type="number"
-                  step="0.1"
-                  class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                >
-                <span class="text-sm text-neutral-500">%</span>
+
+          <div :class="{ 'opacity-50 pointer-events-none': !order.pointEnabled }">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">
+                  기본 적립율
+                </label>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model.number="order.pointRate"
+                    type="number"
+                    step="0.1"
+                    class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                  <span class="text-sm text-neutral-500">%</span>
+                </div>
+                <p class="text-xs text-neutral-400 mt-1">실제 결제 금액에서 적립금이 계산됩니다.</p>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">
+                  적립금 사용 최소 주문금액
+                </label>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model.number="order.pointMinOrder"
+                    type="number"
+                    class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                  <span class="text-sm text-neutral-500">원 이상</span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">
+                  최소 사용 적립금
+                </label>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model.number="order.pointMinUse"
+                    type="number"
+                    class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                  <span class="text-sm text-neutral-500">원 이상</span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-neutral-700 mb-1">
+                  적립금 최대 사용 금액
+                </label>
+                <div class="flex items-center gap-2">
+                  <span class="text-sm text-neutral-500">주문 금액의</span>
+                  <input
+                    v-model.number="order.pointMaxUseRate"
+                    type="number"
+                    min="1"
+                    max="100"
+                    class="w-20 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                  <span class="text-sm text-neutral-500">%</span>
+                </div>
               </div>
             </div>
+
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">
-                적립금 사용 최소 주문금액
+              <label class="block text-sm font-medium text-neutral-700 mb-2">
+                적립금 유효기간
               </label>
-              <div class="flex items-center gap-2">
-                <input
-                  v-model.number="order.pointMinOrder"
-                  type="number"
-                  class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="option in pointExpirationOptions"
+                  :key="option.value"
+                  type="button"
+                  :class="[
+                    'px-4 py-2 rounded-full text-sm font-medium transition-colors',
+                    order.pointExpirationType === option.value
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200',
+                  ]"
+                  @click="order.pointExpirationType = option.value"
                 >
-                <span class="text-sm text-neutral-500">원 이상</span>
-              </div>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">
-                최소 사용 적립금
-              </label>
-              <div class="flex items-center gap-2">
-                <input
-                  v-model.number="order.pointMinUse"
-                  type="number"
-                  class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                >
-                <span class="text-sm text-neutral-500">원 이상</span>
+                  {{ option.label }}
+                </button>
               </div>
             </div>
           </div>
@@ -351,7 +430,10 @@ onMounted(() => {
 
         <UiCard>
           <template #header>
-            <h3 class="font-semibold text-neutral-900">배송 안내 (상품 상세페이지에 표시됩니다.)</h3>
+            <div class="flex items-center gap-1.5">
+              <h3 class="font-semibold text-neutral-900">배송 안내</h3>
+              <UiTooltip content="상품 상세페이지에 표시됩니다." position="top" />
+            </div>
           </template>
           <div class="space-y-4">
             <div class="max-w-md">
@@ -470,7 +552,10 @@ onMounted(() => {
 
         <UiCard>
           <template #header>
-            <h3 class="font-semibold text-neutral-900">상품 안내문 (상품 상세페이지에 표시됩니다.)</h3>
+            <div class="flex items-center gap-1.5">
+              <h3 class="font-semibold text-neutral-900">상품 안내문</h3>
+              <UiTooltip content="상품 상세페이지에 표시됩니다." position="top" />
+            </div>
           </template>
           <textarea
             v-model="product.guideText"
@@ -587,7 +672,10 @@ onMounted(() => {
 
         <UiCard>
           <template #header>
-            <h3 class="font-semibold text-neutral-900">반품/교환 안내문 (상품 상세페이지에 표시됩니다.)</h3>
+            <div class="flex items-center gap-1.5">
+              <h3 class="font-semibold text-neutral-900">반품/교환 안내문</h3>
+              <UiTooltip content="상품 상세페이지에 표시됩니다." position="top" />
+            </div>
           </template>
           <textarea
             v-model="returnPolicy.guideText"
