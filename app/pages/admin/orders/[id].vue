@@ -964,8 +964,9 @@ const exchangeItemsValid = computed(() => {
 const claimAvailableActions = computed(() => {
   const detail = claimDetail.value
   if (!detail) return []
-  const status = detail.status
-  const type = detail.claimType
+  // 대소문자 정규화
+  const status = (detail.status || '').toUpperCase()
+  const type = (detail.claimType || '').toUpperCase()
 
   // ── 취소 ──
   if (type === 'CANCEL') {
@@ -1056,7 +1057,7 @@ const canExecuteClaim = computed(() => {
   if (!claimAction.value) return false
   if (claimAction.value === 'reject' && !claimRejectReason.value.trim()) return false
   if (claimAction.value === 'return-shipping' && (!claimReturnShippingCarrier.value || !claimReturnTrackingNumber.value.trim())) return false
-  if (claimAction.value === 'exchange-complete' && (!claimShippingCompany.value || !claimTrackingNumber.value.trim() || !exchangeItemsValid.value)) return false
+  if (claimAction.value === 'exchange-complete' && (!claimShippingCompany.value || !claimTrackingNumber.value.trim())) return false
   if (claimAction.value === 'reship' && (!claimReshipCarrier.value || !claimReshipTrackingNumber.value.trim())) return false
   if (claimAction.value === 'refund' && !claimRefundReason.value.trim()) return false
   if (claimAction.value === 'receive-inspect' && claimInspectResult.value === 'REJECT' && !claimInspectRejectReason.value.trim()) return false
@@ -1357,7 +1358,7 @@ onMounted(async () => {
               <span class="text-sm text-neutral-500">({{ orderClaims.length }}건)</span>
             </div>
             <UiButton
-              v-if="selectedClaim && canOpenClaimModal"
+              v-if="selectedClaim"
               variant="primary"
               size="sm"
               @click="openClaimModal"
@@ -2088,16 +2089,16 @@ onMounted(async () => {
       :title="(claimTypeMap[claimDetail?.claimType]?.label || '클레임') + ' 처리'"
       size="sm"
     >
-      <!-- 변경 불가 -->
+      <!-- 처리 완료 -->
       <template v-if="!canOpenClaimModal">
         <div class="text-center py-4">
-          <div class="mx-auto w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center mb-4">
-            <svg class="w-6 h-6 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <div class="mx-auto w-12 h-12 rounded-full bg-success-100 flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-success-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h3 class="text-lg font-semibold text-neutral-900 mb-2">처리 불가</h3>
-          <p class="text-sm text-neutral-600">현재 상태에서는 처리할 수 있는 액션이 없습니다.</p>
+          <h3 class="text-lg font-semibold text-neutral-900 mb-2">처리 완료</h3>
+          <p class="text-sm text-neutral-600">이 클레임은 모든 처리가 완료되었습니다.</p>
         </div>
       </template>
 
