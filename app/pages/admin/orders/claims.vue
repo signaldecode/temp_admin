@@ -12,13 +12,13 @@ const router = useRouter()
 // 검색 필터
 const filterType = ref('')      // 유형 필터 (교환/반품)
 const filterStatus = ref('')    // 상태 필터 (요청/승인/완료 등)
-const searchType = ref('orderNo')
+const searchType = ref('ORDER_NUMBER')
 const searchKeyword = ref('')
 
 const searchOptions = [
-  { value: 'orderNo', label: '주문번호' },
-  { value: 'userId', label: '유저ID' },
-  { value: 'phone', label: '연락처' },
+  { value: 'ORDER_NUMBER', label: '주문번호' },
+  { value: 'USER_ID', label: '유저ID' },
+  { value: 'PHONE', label: '연락처' },
 ]
 
 // 유형에 따른 상태 필터 옵션
@@ -27,6 +27,7 @@ const statusFilterOptions = computed(() => {
     return [
       { value: 'REQUESTED', label: '요청' },
       { value: 'APPROVED', label: '승인' },
+      { value: 'ON_HOLD', label: '보류' },
       { value: 'COMPLETED', label: '완료' },
       { value: 'REJECTED', label: '거절' },
     ]
@@ -36,6 +37,7 @@ const statusFilterOptions = computed(() => {
       { value: 'REQUESTED', label: '요청' },
       { value: 'APPROVED', label: '승인' },
       { value: 'IN_PROGRESS', label: '진행중' },
+      { value: 'ON_HOLD', label: '보류' },
       { value: 'COMPLETED', label: '완료' },
       { value: 'REJECTED', label: '거절' },
     ]
@@ -45,6 +47,7 @@ const statusFilterOptions = computed(() => {
     { value: 'REQUESTED', label: '요청' },
     { value: 'APPROVED', label: '승인' },
     { value: 'IN_PROGRESS', label: '진행중' },
+    { value: 'ON_HOLD', label: '보류' },
     { value: 'COMPLETED', label: '완료' },
     { value: 'REJECTED', label: '거절' },
   ]
@@ -79,6 +82,7 @@ const selectedStatus = ref('')
 const claimStatusOptions = [
   { value: 'APPROVED', label: '승인' },
   { value: 'IN_PROGRESS', label: '진행중' },
+  { value: 'ON_HOLD', label: '보류' },
   { value: 'COMPLETED', label: '완료' },
   { value: 'REJECTED', label: '거절' },
 ]
@@ -88,32 +92,42 @@ const statusMap = {
   REQUESTED: { label: '요청', variant: 'warning' },
   APPROVED: { label: '승인', variant: 'info' },
   IN_PROGRESS: { label: '진행중', variant: 'info' },
+  ON_HOLD: { label: '보류', variant: 'warning' },
   COMPLETED: { label: '완료', variant: 'success' },
   REJECTED: { label: '거절', variant: 'error' },
 }
 
-// 사유 타입 매핑
+// 사유 타입 매핑 (통일된 버전)
 const reasonTypeMap = {
-  DEFECTIVE: '불량',
+  CHANGE_OF_MIND: '단순 변심',
+  DEFECTIVE: '상품 불량/파손',
   WRONG_DELIVERY: '오배송',
-  DELAYED_DELIVERY: '배송지연',
-  CHANGE_OF_MIND: '단순변심',
-  INCOMPATIBILITY: '호환성문제',
-  OTHER: '기타'
+  WRONG_OPTION: '옵션 오선택',
+  DELAYED_DELIVERY: '배송 지연',
+  INCOMPATIBILITY: '호환성 문제',
+  OUT_OF_STOCK: '품절',
+  PRICE_ERROR: '가격 오류',
+  CUSTOMER_REQUEST: '고객 요청',
+  OTHER: '기타',
 }
 
 // 클레임 타입 매핑
 const claimTypeMap = {
-  CANCEL: '취소',
-  EXCHANGE: '교환',
-  RETURN: '반품',
+  CANCEL: { label: '취소', variant: 'neutral' },
+  EXCHANGE: { label: '교환', variant: 'warning' },
+  RETURN: { label: '반품', variant: 'error' },
 }
 
 // 조합된 상태 라벨 반환 함수
 const getCombinedStatusLabel = (claimType, status) => {
-  const typeLabel = claimTypeMap[claimType] || claimType
+  const typeLabel = claimTypeMap[claimType]?.label || claimType
   const statusLabel = statusMap[status]?.label || status
   return `${typeLabel}${statusLabel}`
+}
+
+// 클레임 유형 기반 뱃지 variant
+const getClaimVariant = (claimType) => {
+  return claimTypeMap[claimType]?.variant || 'neutral'
 }
 
 // 클레임 유형 필터 옵션
@@ -174,7 +188,7 @@ const handleSearch = () => {
 const handleReset = () => {
   filterType.value = ''
   filterStatus.value = ''
-  searchType.value = 'orderNo'
+  searchType.value = 'ORDER_NUMBER'
   searchKeyword.value = ''
   currentPage.value = 1
   fetchOrders()
@@ -194,7 +208,8 @@ const tableColumns = [
   { key: 'phone', label: '연락처' },
   { key: 'reasonType', label: '사유' },
   { key: 'itemCount', label: '건수', align: 'center' },
-  { key: 'orderAmount', label: '주문금액', align: 'right' },
+  { key: 'refundAmount', label: '환불금액', align: 'right' },
+  { key: 'claimType', label: '유형', align: 'center' },
   { key: 'status', label: '상태', align: 'center' },
 ]
 
@@ -381,15 +396,22 @@ onMounted(() => {
         <span class="text-sm text-neutral-700">{{ item.itemCount }}건</span>
       </template>
 
-      <!-- 주문금액 -->
-      <template #cell-orderAmount="{ item }">
-        <span class="text-sm font-medium text-neutral-900">{{ formatCurrency(item.orderAmount) }}</span>
+      <!-- 환불금액 -->
+      <template #cell-refundAmount="{ item }">
+        <span class="text-sm font-medium text-neutral-900">{{ item.refundAmount ? formatCurrency(item.refundAmount) : '-' }}</span>
+      </template>
+
+      <!-- 유형 -->
+      <template #cell-claimType="{ item }">
+        <UiBadge :variant="getClaimVariant(item.claimType)" size="sm">
+          {{ claimTypeMap[item.claimType]?.label || item.claimType }}
+        </UiBadge>
       </template>
 
       <!-- 상태 -->
       <template #cell-status="{ item }">
         <UiBadge :variant="statusMap[item.status]?.variant || 'neutral'" size="sm">
-          {{ getCombinedStatusLabel(item.claimType, item.status) }}
+          {{ statusMap[item.status]?.label || item.status }}
         </UiBadge>
       </template>
 
@@ -400,9 +422,15 @@ onMounted(() => {
             <span class="text-sm font-medium text-primary-600">{{ item.orderNumber }}</span>
             <p class="text-xs text-neutral-500">{{ formatDate(item.requestedAt, 'long') }}</p>
           </div>
-          <UiBadge :variant="statusMap[item.status]?.variant || 'neutral'" size="sm">
-            {{ getCombinedStatusLabel(item.claimType, item.status) }}
-          </UiBadge>
+          <div class="flex items-center gap-1">
+            <UiBadge :variant="getClaimVariant(item.claimType)" size="sm">
+              {{ claimTypeMap[item.claimType]?.label || item.claimType }}
+            </UiBadge>
+            <UiBadge :variant="statusMap[item.status]?.variant || 'neutral'" size="sm">
+              {{ statusMap[item.status]?.label || item.status }}
+            </UiBadge>
+          </div>
+
         </div>
         <div class="text-sm text-neutral-600 space-y-1">
           <p>{{ item.userId }}</p>
@@ -411,7 +439,7 @@ onMounted(() => {
         </div>
         <div class="flex items-center justify-between mt-2 pt-2 border-t border-neutral-100">
           <span class="text-sm text-neutral-500">{{ item.itemCount }}건</span>
-          <span class="text-sm font-semibold text-neutral-900">{{ formatCurrency(item.orderAmount) }}</span>
+          <span class="text-sm font-semibold text-neutral-900">{{ item.refundAmount ? formatCurrency(item.refundAmount) : '-' }}</span>
         </div>
       </template>
 

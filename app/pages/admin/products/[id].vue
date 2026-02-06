@@ -291,6 +291,41 @@ const generateVariants = () => {
   })
 }
 
+// 단일 상품 생성 (옵션 없는 상품용)
+const createSingleVariant = () => {
+  // 기존 옵션 그룹 초기화
+  optionGroups.value = [{ id: Date.now(), name: '', valuesInput: '' }]
+
+  // 상품 코드 또는 타임스탬프 기반 SKU 생성
+  const productCode = product.value.code?.toUpperCase() || ''
+  const timestamp = Date.now().toString(36).slice(-4).toUpperCase()
+  const prefix = productCode || (() => {
+    const namePrefix = product.value.name
+      ? product.value.name.replace(/\s/g, '').substring(0, 4).toUpperCase()
+      : 'PRD'
+    return `${namePrefix}${timestamp}`
+  })()
+
+  // 기본 variant 1개 생성
+  variants.value = [{
+    id: Date.now(),
+    options: [{ name: '기본', value: '기본' }],
+    optionLabel: '기본',
+    sku: `${prefix}-DEFAULT-001`,
+    stock: 0,
+    additionalPrice: 0,
+    images: [],
+  }]
+
+  isVariantsGenerated.value = true
+  selectedVariantIds.value = []
+
+  uiStore.showToast({
+    type: 'success',
+    message: '단일 상품이 생성되었습니다. 재고를 입력해주세요.',
+  })
+}
+
 // variant 이미지 업로드
 const handleVariantImageUpload = (event, variant) => {
   const files = Array.from(event.target.files || [])
@@ -340,15 +375,33 @@ const expectedVariantCount = computed(() => {
 
 // SKU 일괄 생성
 const generateSkuBatch = () => {
-  const prefix = product.value.name
-    ? product.value.name.substring(0, 3).toUpperCase().replace(/\s/g, '')
-    : 'PRD'
+  // 상품 코드 또는 타임스탬프 기반 prefix
+  const productCode = product.value.code?.toUpperCase() || ''
+  const timestamp = Date.now().toString(36).slice(-4).toUpperCase() // 짧은 유니크 코드
+
+  // 상품 코드가 있으면 사용, 없으면 상품명 앞글자 + 타임스탬프
+  const prefix = productCode || (() => {
+    const namePrefix = product.value.name
+      ? product.value.name.replace(/\s/g, '').substring(0, 4).toUpperCase()
+      : 'PRD'
+    return `${namePrefix}${timestamp}`
+  })()
 
   variants.value.forEach((variant, index) => {
+    // 옵션값에서 영문/숫자만 추출하거나 앞 2글자 사용
     const optionCode = variant.options
-      .map((o) => o.value.substring(0, 2).toUpperCase())
-      .join('-')
-    variant.sku = `${prefix}-${optionCode}-${String(index + 1).padStart(3, '0')}`
+      .map((o) => {
+        const val = o.value.replace(/\s/g, '')
+        // 영문/숫자가 있으면 추출, 없으면 앞 2글자
+        const alphanumeric = val.replace(/[^a-zA-Z0-9]/g, '')
+        return alphanumeric ? alphanumeric.substring(0, 3).toUpperCase() : val.substring(0, 2)
+      })
+      .join('')
+
+    // 순번 3자리
+    const seq = String(index + 1).padStart(3, '0')
+
+    variant.sku = `${prefix}-${optionCode}-${seq}`
   })
 
   uiStore.showToast({ type: 'success', message: 'SKU가 일괄 생성되었습니다.' })
@@ -371,10 +424,11 @@ const validateForm = () => {
     return false
   }
 
-  // if (!isVariantsGenerated.value || variants.value.length === 0) {
-  //   uiStore.showToast({ type: 'error', message: '옵션 조합을 생성해주세요.' })
-  //   return false
-  // }
+  // 옵션 조합 필수 (재고 관리를 위해)
+  if (!isVariantsGenerated.value || variants.value.length === 0) {
+    uiStore.showToast({ type: 'error', message: '옵션 조합을 생성해주세요. (재고 관리 필수)' })
+    return false
+  }
 
   const emptySkuVariant = variants.value.find((v) => !v.sku.trim())
   if (emptySkuVariant) {
@@ -430,14 +484,20 @@ const buildRequestData = () => {
     categoryId: product.value.categoryId || null,
     tagIds: selectedTagIds.value,
     options,
-    variants: variants.value.map((v) => ({
-      id: v.id && typeof v.id === 'number' && v.id < 1000000000 ? v.id : undefined,
-      name: v.optionLabel, // "블랙 / S" 같은 옵션 조합명
-      sku: v.sku,
-      optionValueIds: getOptionValueIds(v),
-      additionalPrice: v.additionalPrice,
-      stockQuantity: v.stock,
-    })),
+    variants: variants.value.map((v) => {
+      const variantData = {
+        id: v.id && typeof v.id === 'number' && v.id < 1000000000 ? v.id : undefined,
+        name: v.optionLabel, // "블랙 / S" 같은 옵션 조합명
+        sku: v.sku,
+        additionalPrice: v.additionalPrice,
+        stockQuantity: v.stock,
+      }
+      // 옵션이 있을 때만 optionValueIds 추가 (단일 상품은 제외)
+      if (options.length > 0) {
+        variantData.optionValueIds = getOptionValueIds(v)
+      }
+      return variantData
+    }),
   }
 
   return data
@@ -509,6 +569,19 @@ const handleSave = async () => {
 
   isSaving.value = true
 
+  // 재고 기반 상태 자동 변경
+  if (isVariantsGenerated.value && variants.value.length > 0) {
+    if (totalStock.value === 0 && product.value.status !== 'SOLD_OUT') {
+      // 재고 0 → 품절 처리
+      product.value.status = 'SOLD_OUT'
+      uiStore.showToast({ type: 'info', message: '재고가 0이므로 품절로 변경되었습니다.' })
+    } else if (totalStock.value > 0 && product.value.status === 'SOLD_OUT') {
+      // 재고 있음 + 품절 상태 → 판매중으로 변경
+      product.value.status = 'ON_SALE'
+      uiStore.showToast({ type: 'info', message: '재고가 추가되어 판매중으로 변경되었습니다.' })
+    }
+  }
+
   try {
     if (isEditMode.value) {
       // 수정: PATCH - 변경된 필드만 전송
@@ -551,7 +624,7 @@ const handleSave = async () => {
   } catch (err) {
     uiStore.showToast({
       type: 'error',
-      message: err.data?.message || err.message || '저장에 실패했습니다.',
+      message: err.data?.error?.message || err.data?.message || err.message || '저장에 실패했습니다.',
     })
   } finally {
     isSaving.value = false
@@ -569,7 +642,7 @@ const handleDelete = async () => {
   } catch (err) {
     uiStore.showToast({
       type: 'error',
-      message: err.data?.message || err.message || '삭제에 실패했습니다.',
+      message: err.data?.error?.message || err.data?.message || err.message || '삭제에 실패했습니다.',
     })
   }
 }
@@ -1044,6 +1117,17 @@ onMounted(() => {
             </p>
             <UiButton variant="primary" size="sm" @click="generateVariants">
               옵션 조합 생성
+            </UiButton>
+          </div>
+
+          <!-- 단일 상품 버튼 (옵션이 없을 때) -->
+          <div v-if="expectedVariantCount === 0 && !isVariantsGenerated" class="flex items-center justify-between p-4 bg-primary-50 rounded-lg border border-primary-200">
+            <div>
+              <p class="text-sm font-medium text-primary-900">옵션이 없는 단일 상품인가요?</p>
+              <p class="text-xs text-primary-600 mt-0.5">옵션 없이 기본 재고만 관리합니다</p>
+            </div>
+            <UiButton variant="outline" size="sm" @click="createSingleVariant">
+              단일 상품 생성
             </UiButton>
           </div>
         </div>

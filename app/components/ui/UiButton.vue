@@ -2,14 +2,14 @@
 /**
  * UI Button
  * 범용 버튼 컴포넌트
- * Variants: primary, secondary, outline, ghost, danger
+ * Variants: primary, secondary, outline, ghost, danger, warning, error
  * Sizes: xs, sm, md, lg
  */
 const props = defineProps({
   variant: {
     type: String,
     default: 'primary',
-    validator: (v) => ['primary', 'secondary', 'outline', 'ghost', 'danger'].includes(v),
+    validator: (v) => ['primary', 'secondary', 'outline', 'ghost', 'danger', 'warning', 'error'].includes(v),
   },
   size: {
     type: String,
@@ -45,6 +45,8 @@ const variantClasses = {
   outline: 'border border-neutral-300 text-neutral-700 hover:bg-neutral-50 focus:ring-neutral-500',
   ghost: 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 focus:ring-neutral-500',
   danger: 'bg-error-600 text-white hover:bg-error-700 focus:ring-error-500',
+  warning: 'bg-warning-500 text-white hover:bg-warning-600 focus:ring-warning-500',
+  error: 'bg-error-600 text-white hover:bg-error-700 focus:ring-error-500',
 }
 
 // Size 스타일
