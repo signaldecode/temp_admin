@@ -7,7 +7,7 @@
  * API Request JSON (application/json):
  * {
  *   "name": "팝업명",
- *   "isActive": true,
+ *   "status": "ACTIVE",  // ACTIVE | INACTIVE
  *   "image": "https://example.com/popup.jpg",
  *   "linkUrl": "https://example.com/event",
  *   "linkTarget": "_self",
@@ -64,7 +64,7 @@ const getDefaultDateTime = () => {
 // 폼 데이터 (API 스펙에 맞춤)
 const form = ref({
   name: '',
-  isActive: false,
+  status: 'INACTIVE', // ACTIVE | INACTIVE
   image: '', // 이미지 URL
   linkUrl: '',
   linkTarget: '_blank',
@@ -73,6 +73,12 @@ const form = ref({
   sortOrder: 0,
   startedAt: getDefaultDateTime(),
   endedAt: '',
+})
+
+// 활성화 상태 (스위치용 computed)
+const isActive = computed({
+  get: () => form.value.status === 'ACTIVE',
+  set: (val) => { form.value.status = val ? 'ACTIVE' : 'INACTIVE' }
 })
 
 const isLoading = ref(false)
@@ -104,7 +110,7 @@ const fetchPopup = async () => {
 
     form.value = {
       name: data.name || '',
-      isActive: data.isActive ?? false,
+      status: data.status || 'INACTIVE',
       image: data.image || '',
       linkUrl: data.linkUrl || '',
       linkTarget: data.linkTarget || '_blank',
@@ -195,7 +201,7 @@ const handleSave = async () => {
     // JSON 데이터
     const requestData = {
       name: form.value.name,
-      isActive: form.value.isActive,
+      status: form.value.status,
       image: form.value.image,
       linkUrl: form.value.linkUrl || null,
       linkTarget: form.value.linkTarget,
@@ -301,7 +307,7 @@ onMounted(() => {
               <p class="text-xs text-neutral-500 mt-0.5">활성화하면 설정된 기간 동안 팝업이 노출됩니다.</p>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
-              <input v-model="form.isActive" type="checkbox" class="sr-only peer">
+              <input v-model="isActive" type="checkbox" class="sr-only peer">
               <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500" />
             </label>
           </div>

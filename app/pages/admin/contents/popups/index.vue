@@ -30,7 +30,7 @@ const popups = ref([])
 const isLoading = ref(false)
 
 // 필터
-const filterIsActive = ref('')
+const filterStatus = ref('')
 const searchKeyword = ref('')
 
 // 페이지네이션
@@ -49,9 +49,9 @@ const fetchPopups = async () => {
       size: perPage,
     }
 
-    // isActive 필터 적용
-    if (filterIsActive.value !== '') {
-      params.isActive = filterIsActive.value === 'true'
+    // status 필터 적용
+    if (filterStatus.value) {
+      params.status = filterStatus.value
     }
 
     const response = await get('/admin/popups', params)
@@ -108,14 +108,14 @@ const bulkDelete = () => {
 
 const bulkChangeStatus = (status) => {
   if (!selectedIds.value.length) return
-  popups.value = popups.value.map((p) => selectedIds.value.includes(p.id) ? { ...p, isActive: status } : p)
+  popups.value = popups.value.map((p) => selectedIds.value.includes(p.id) ? { ...p, status } : p)
   selectedIds.value = []
   uiStore.showToast({ type: 'success', message: '상태가 변경되었습니다.' })
 }
 
 // 헬퍼
-const getStatusBadge = (isActive) => {
-  return isActive
+const getStatusBadge = (status) => {
+  return status === 'ACTIVE'
     ? { label: '활성', color: 'success' }
     : { label: '비활성', color: 'warning' }
 }
@@ -131,7 +131,7 @@ const handleSearch = () => {
   fetchPopups()
 }
 const handleReset = () => {
-  filterIsActive.value = ''
+  filterStatus.value = ''
   searchKeyword.value = ''
   currentPage.value = 1
   fetchPopups()
@@ -163,10 +163,10 @@ onMounted(() => {
     <template #filters>
       <DomainFilterCard @search="handleSearch" @reset="handleReset">
         <template #selects>
-          <select v-model="filterIsActive" class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          <select v-model="filterStatus" class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
             <option value="">상태 전체</option>
-            <option value="true">활성</option>
-            <option value="false">비활성</option>
+            <option value="ACTIVE">활성</option>
+            <option value="INACTIVE">비활성</option>
           </select>
         </template>
         <template #search>
@@ -177,8 +177,8 @@ onMounted(() => {
 
     <template #bulk>
       <DomainBulkActionBar :count="selectedIds.length" :show="selectedIds.length > 0">
-        <UiButton variant="outline" size="sm" @click="bulkChangeStatus(true)">활성</UiButton>
-        <UiButton variant="outline" size="sm" @click="bulkChangeStatus(false)">비활성</UiButton>
+        <UiButton variant="outline" size="sm" @click="bulkChangeStatus('ACTIVE')">활성</UiButton>
+        <UiButton variant="outline" size="sm" @click="bulkChangeStatus('INACTIVE')">비활성</UiButton>
         <UiButton variant="danger" size="sm" @click="bulkDelete">삭제</UiButton>
       </DomainBulkActionBar>
     </template>
@@ -232,7 +232,7 @@ onMounted(() => {
       </template>
 
       <template #cell-status="{ item }">
-        <UiBadge :variant="getStatusBadge(item.isActive).color" size="sm">{{ getStatusBadge(item.isActive).label }}</UiBadge>
+        <UiBadge :variant="getStatusBadge(item.status).color" size="sm">{{ getStatusBadge(item.status).label }}</UiBadge>
       </template>
 
       <template #mobile-card="{ item }">
@@ -243,7 +243,7 @@ onMounted(() => {
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between mb-1">
               <p class="text-sm font-medium text-neutral-900 truncate">{{ item.name || '-' }}</p>
-              <UiBadge :variant="getStatusBadge(item.isActive).color" size="sm">{{ getStatusBadge(item.isActive).label }}</UiBadge>
+              <UiBadge :variant="getStatusBadge(item.status).color" size="sm">{{ getStatusBadge(item.status).label }}</UiBadge>
             </div>
             <div class="flex items-center gap-4 text-xs text-neutral-400">
               <span>{{ getPopupTypeLabel(item.popupType) }}</span>

@@ -19,33 +19,23 @@ export default defineEventHandler(async (event) => {
 
   console.log('[Proxy]', method, targetUrl)
 
-  // 요청 헤더
+  // 요청 헤더 복사
   const reqHeaders = getHeaders(event)
-  const headers = {
-    'content-type': reqHeaders['content-type'] || 'application/json',
-    'accept': reqHeaders.accept || 'application/json',
-  }
+  const headers = {}
 
-  // 쿠키 전달 (브라우저 → 백엔드)
-  if (reqHeaders.cookie) {
-    headers.cookie = reqHeaders.cookie
-  }
-
-  // 요청 바디
-  let body = undefined
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-    try {
-      body = await readBody(event)
-    } catch (e) {
-      // body 없는 경우 무시
-    }
-  }
+  // 필요한 헤더만 전달
+  if (reqHeaders['content-type']) headers['content-type'] = reqHeaders['content-type']
+  if (reqHeaders['content-length']) headers['content-length'] = reqHeaders['content-length']
+  if (reqHeaders.accept) headers.accept = reqHeaders.accept
+  if (reqHeaders.cookie) headers.cookie = reqHeaders.cookie
 
   try {
-    const response = await $fetch.raw(targetUrl, {
+    // 요청 바디 스트림으로 전달
+    const response = await fetch(targetUrl, {
       method,
       headers,
-      body,
+      body: ['GET', 'HEAD'].includes(method) ? undefined : event.node.req,
+      duplex: 'half',
     })
 
     // Set-Cookie 전달 (백엔드 → 브라우저)
@@ -54,12 +44,9 @@ export default defineEventHandler(async (event) => {
 
     setCookies.forEach((cookie) => {
       let modifiedCookie = cookie
-        // 프록시 경로에 맞게 Path 수정 (항상)
         .replace(/Path=\/api\/v1/gi, 'Path=/api')
-        // Domain 제거 (항상)
         .replace(/;\s*Domain=[^;]*/gi, '')
 
-      // 로컬 개발 환경에서만 Secure 제거 (HTTP localhost 호환)
       if (isDev) {
         modifiedCookie = modifiedCookie
           .replace(/;\s*Secure/gi, '')
@@ -69,11 +56,25 @@ export default defineEventHandler(async (event) => {
       appendResponseHeader(event, 'set-cookie', modifiedCookie)
     })
 
-    return response._data
+    // 응답 상태 설정
+    setResponseStatus(event, response.status)
+
+    // 응답 헤더 전달 (content-type 등)
+    const resContentType = response.headers.get('content-type')
+    if (resContentType) {
+      setResponseHeader(event, 'content-type', resContentType)
+    }
+
+    // 응답 바디 반환
+    if (resContentType?.includes('application/json')) {
+      return await response.json()
+    } else {
+      // 이미지 등 바이너리 응답
+      return await response.arrayBuffer()
+    }
   } catch (error) {
-    console.error('[Proxy Error]', error.message, error.status || error.statusCode)
-    const status = error.status || error.statusCode || 500
-    setResponseStatus(event, status)
-    return error.data || { error: error.message }
+    console.error('[Proxy Error]', error.message)
+    setResponseStatus(event, 500)
+    return { error: error.message }
   }
 })
