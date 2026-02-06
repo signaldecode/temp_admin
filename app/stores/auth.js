@@ -60,7 +60,12 @@ export const useAuthStore = defineStore('auth', {
 
       try {
         const { $api } = useNuxtApp()
-        await $api.post('/auth/login', credentials)
+        const loginResponse = await $api.post('/auth/login', credentials)
+
+        console.log('Login response:', loginResponse)
+
+        // Safari 쿠키 설정 대기
+        await new Promise(resolve => setTimeout(resolve, 100))
 
         // 로그인 성공 후 유저 정보 조회
         await this.fetchUser()
@@ -106,7 +111,10 @@ export const useAuthStore = defineStore('auth', {
 
       try {
         const { $api } = useNuxtApp()
+        console.log('Fetching /auth/me...')
+        console.log('Document cookies:', document.cookie)
         const response = await $api.get('/auth/me')
+        console.log('Me response:', response)
 
         // API 응답: { success, data: MyInfoResponse, error, message }
         const userData = response.data

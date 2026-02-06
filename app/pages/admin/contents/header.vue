@@ -94,7 +94,7 @@ const onDragEnd = () => {
 const fetchHeaderConfig = async () => {
   isLoading.value = true
   try {
-    const response = await $api('/admin/contents/header')
+    const response = await $api.get('/admin/contents/header')
 
     // order 기준으로 정렬하여 저장
     selectedNavItems.value = response
@@ -117,10 +117,7 @@ const handleSave = async () => {
       order: index,
     }))
 
-    await $api('/admin/contents/header', {
-      method: 'PUT',
-      body: payload,
-    })
+    await $api.put('/admin/contents/header', payload)
 
     uiStore.showToast({ type: 'success', message: '헤더 설정이 저장되었습니다.' })
   } catch (error) {

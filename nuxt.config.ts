@@ -4,6 +4,12 @@ export default defineNuxtConfig({
 
   devtools: { enabled: true },
 
+  // 로컬 개발 서버 설정
+  devServer: {
+    // HTTPS 활성화 (Safari 쿠키 문제 해결)
+    // https: true,  // 필요시 주석 해제
+  },
+
   // 모듈 설정
   modules: [
     '@nuxtjs/tailwindcss',
@@ -36,7 +42,9 @@ export default defineNuxtConfig({
   // 런타임 설정 (환경변수 기반)
   runtimeConfig: {
     public: {
-      apiBase: process.env.NUXT_PUBLIC_API_BASE || '/api',
+      // API 요청 경로 (프록시 사용: /api, 직접 호출: 외부 URL)
+      // Safari 쿠키 문제 해결을 위해 /api 프록시 권장
+      apiBase: '/api',
       // Phase 1: 단일 서비스 식별자 (Phase 2에서 동적으로 변경 가능)
       defaultTenantId: process.env.NUXT_PUBLIC_DEFAULT_TENANT_ID || 'default',
     },
@@ -100,5 +108,10 @@ export default defineNuxtConfig({
     // Admin 페이지는 CSR (인증 필요)
     '/admin/**': { ssr: false },
     '/login': { ssr: false },
+  },
+
+  // Nitro 설정
+  nitro: {
+    // 프록시는 server/api에서 처리
   },
 })
