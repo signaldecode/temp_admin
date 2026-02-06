@@ -97,7 +97,7 @@ const fetchCategories = async () => {
   } catch (err) {
     uiStore.showToast({
       type: 'error',
-      message: err.data?.message || err.message || '카테고리를 불러오지 못했습니다.',
+      message: err.data?.error?.message || err.data?.message || err.message || '카테고리를 불러오지 못했습니다.',
     })
   } finally {
     isLoading.value = false
@@ -158,7 +158,7 @@ const saveAllChanges = async () => {
   } catch (err) {
     uiStore.showToast({
       type: 'error',
-      message: err.data?.message || err.message || '저장에 실패했습니다.',
+      message: err.data?.error?.message || err.data?.message || err.message || '저장에 실패했습니다.',
     })
 
     // 에러 시에도 서버 데이터로 동기화 (부분 성공 케이스 대응)
