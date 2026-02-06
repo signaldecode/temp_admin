@@ -15,6 +15,9 @@ export default defineEventHandler(async (event) => {
   const targetBase = process.env.API_BASE_URL || 'https://api-admin.sigdec.click/api/v1'
   const targetPath = path.replace(/^\/api/, '')
   const targetUrl = `${targetBase}${targetPath}`
+  const method = event.method
+
+  console.log('[Proxy]', method, targetUrl)
 
   // 요청 헤더
   const reqHeaders = getHeaders(event)
@@ -30,7 +33,6 @@ export default defineEventHandler(async (event) => {
 
   // 요청 바디
   let body = undefined
-  const method = event.method
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
     try {
       body = await readBody(event)
@@ -48,22 +50,28 @@ export default defineEventHandler(async (event) => {
 
     // Set-Cookie 전달 (백엔드 → 브라우저)
     const setCookies = response.headers.getSetCookie?.() || []
-    setCookies.forEach((cookie) => {
-      // Safari/로컬 환경 호환을 위해 쿠키 속성 수정
-      let modifiedCookie = cookie
-        .replace(/;\s*Secure/gi, '')
-        .replace(/;\s*SameSite=None/gi, '; SameSite=Lax')
-        .replace(/;\s*Domain=[^;]*/gi, '')
-        .replace(/Path=\/api\/v1/gi, 'Path=/api')  // 프록시 경로에 맞게 수정
+    const isDev = process.env.NODE_ENV === 'development'
 
-      console.log('Original cookie:', cookie)
-      console.log('Modified cookie:', modifiedCookie)
+    setCookies.forEach((cookie) => {
+      let modifiedCookie = cookie
+        // 프록시 경로에 맞게 Path 수정 (항상)
+        .replace(/Path=\/api\/v1/gi, 'Path=/api')
+        // Domain 제거 (항상)
+        .replace(/;\s*Domain=[^;]*/gi, '')
+
+      // 로컬 개발 환경에서만 Secure 제거 (HTTP localhost 호환)
+      if (isDev) {
+        modifiedCookie = modifiedCookie
+          .replace(/;\s*Secure/gi, '')
+          .replace(/;\s*SameSite=None/gi, '; SameSite=Lax')
+      }
 
       appendResponseHeader(event, 'set-cookie', modifiedCookie)
     })
 
     return response._data
   } catch (error) {
+    console.error('[Proxy Error]', error.message, error.status || error.statusCode)
     const status = error.status || error.statusCode || 500
     setResponseStatus(event, status)
     return error.data || { error: error.message }
