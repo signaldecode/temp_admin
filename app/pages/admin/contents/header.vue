@@ -90,17 +90,17 @@ const onDragEnd = () => {
   dragOverIndex.value = null
 }
 
-// 데이터 로드 (API 미연동 - Mock)
+// 데이터 로드
 const fetchHeaderConfig = async () => {
   isLoading.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 300))
+    const response = await $api.get('/admin/tenant/header-menu')
 
-    // Mock 데이터
-    selectedNavItems.value = [
-      { id: 'best', label: '베스트' },
-      { id: 'category', label: '카테고리' },
-    ]
+    // order 기준으로 정렬하여 저장
+    const menus = response.data?.menus || []
+    selectedNavItems.value = menus
+      .sort((a, b) => a.order - b.order)
+      .map(item => ({ id: item.id, label: item.label }))
   } catch (error) {
     uiStore.showToast({ type: 'error', message: '헤더 설정을 불러오지 못했습니다.' })
   } finally {
@@ -108,17 +108,19 @@ const fetchHeaderConfig = async () => {
   }
 }
 
-// 저장 (API 미연동 - Mock)
+// 저장
 const handleSave = async () => {
   isSaving.value = true
   try {
-    const payload = selectedNavItems.value.map((item, index) => ({
-      id: item.id,
-      label: item.label,
-      order: index,
-    }))
+    const payload = {
+      menus: selectedNavItems.value.map((item, index) => ({
+        id: item.id,
+        label: item.label,
+        order: index,
+      }))
+    }
 
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await $api.put('/admin/tenant/header-menu', payload)
 
     uiStore.showToast({ type: 'success', message: '헤더 설정이 저장되었습니다.' })
   } catch (error) {
