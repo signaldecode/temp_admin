@@ -4,110 +4,115 @@
  */
 
 import { useUiStore } from '~/stores/ui'
+import { usePromotion } from '~/composables/usePromotion'
+import { formatDate } from '~/utils/formatters'
 
 const router = useRouter()
 const uiStore = useUiStore()
+const { getPromotions } = usePromotion()
 
 // 할인 종류 옵션
 const discountTypeOptions = [
-  { value: 'percent', label: '%' },
-  { value: 'amount', label: '원' },
-]
-
-// 카테고리 옵션
-const categoryOptions = [
-  { value: 'outer', label: '아우터' },
-  { value: 'top', label: '상의' },
-  { value: 'bottom', label: '하의' },
-  { value: 'shoes', label: '신발' },
-  { value: 'acc', label: '액세서리' },
+  { value: 'RATE', label: '정률 (%)' },
+  { value: 'AMOUNT', label: '정액 (원)' },
 ]
 
 // 상태 옵션
 const statusOptions = [
-  { value: 'active', label: '진행중', color: 'success' },
-  { value: 'scheduled', label: '예약', color: 'info' },
-  { value: 'ended', label: '종료', color: 'neutral' },
-  { value: 'inactive', label: '비활성', color: 'warning' },
+  { value: 'ACTIVE', label: '활성', color: 'success' },
+  { value: 'INACTIVE', label: '비활성', color: 'warning' },
+  { value: 'EXPIRED', label: '만료', color: 'neutral' },
 ]
 
-// Mock 데이터
-const discounts = ref([
-  { id: 1, name: '신년 세일', type: 'percent', value: 20, targetCategories: null, startDate: '2025-01-01', endDate: '2025-01-31', status: 'active' },
-  { id: 2, name: '아우터 특가', type: 'percent', value: 30, targetCategories: ['outer'], startDate: '2025-01-10', endDate: '2025-01-20', status: 'active' },
-  { id: 3, name: '상시 할인', type: 'amount', value: 5000, targetCategories: null, startDate: '2025-01-01', endDate: null, status: 'active' },
-  { id: 4, name: '봄 시즌 할인', type: 'percent', value: 15, targetCategories: ['top', 'bottom'], startDate: '2025-03-01', endDate: '2025-03-31', status: 'scheduled' },
-  { id: 5, name: '연말 특가', type: 'percent', value: 50, targetCategories: null, startDate: '2024-12-20', endDate: '2024-12-31', status: 'ended' },
-])
+// 할인 목록
+const discounts = ref([])
+
+// 로딩 상태
+const isLoading = ref(false)
 
 // 필터
 const filterStatus = ref('')
-const filterCategory = ref('')
 const searchKeyword = ref('')
 
-// 필터링된 목록
+// 페이지네이션
+const currentPage = ref(1)
+const perPage = 20
+const totalItems = ref(0)
+const totalPages = computed(() => Math.ceil(totalItems.value / perPage))
+
+// 할인 목록 조회
+const fetchDiscounts = async () => {
+  isLoading.value = true
+
+  try {
+    const params = {
+      page: currentPage.value - 1,
+      size: perPage,
+    }
+
+    if (searchKeyword.value.trim()) {
+      params.keyword = searchKeyword.value.trim()
+    }
+
+    const result = await getPromotions(params)
+
+    discounts.value = result.content
+    totalItems.value = result.totalElements
+    selectedIds.value = []
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '할인 목록을 불러오는데 실패했습니다.',
+    })
+    discounts.value = []
+    totalItems.value = 0
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// 필터링된 목록 (status는 프론트 필터링)
 const filteredList = computed(() => {
   let result = [...discounts.value]
-  if (filterStatus.value) result = result.filter((d) => d.status === filterStatus.value)
-  if (filterCategory.value) {
-    result = result.filter((d) => d.targetCategories?.includes(filterCategory.value))
+  if (filterStatus.value) {
+    result = result.filter((d) => d.status === filterStatus.value)
   }
-  if (searchKeyword.value.trim()) {
-    const keyword = searchKeyword.value.toLowerCase()
-    result = result.filter((d) => d.name.toLowerCase().includes(keyword))
-  }
-  return result.sort((a, b) => new Date(b.startDate) - new Date(a.startDate))
+  return result
 })
 
 // 테이블 컬럼
 const tableColumns = [
   { key: 'name', label: '할인명' },
-  { key: 'discount', label: '할인' },
-  { key: 'target', label: '적용 대상' },
-  { key: 'period', label: '기간' },
-  { key: 'status', label: '상태', width: 'w-24' },
+  { key: 'discountType', label: '할인 유형', width: 'w-28', align: 'center' },
+  { key: 'discountValue', label: '할인 값', width: 'w-24', align: 'right' },
+  { key: 'period', label: '적용 기간' },
+  { key: 'status', label: '상태', width: 'w-24', align: 'center' },
 ]
 
 // 선택
 const selectedIds = ref([])
-const handleSelectAll = (selectAll) => { selectedIds.value = selectAll ? paginatedList.value.map((d) => d.id) : [] }
+const handleSelectAll = (selectAll) => {
+  selectedIds.value = selectAll ? filteredList.value.map((d) => d.id) : []
+}
 const handleSelect = (id) => {
   const idx = selectedIds.value.indexOf(id)
   idx > -1 ? selectedIds.value.splice(idx, 1) : selectedIds.value.push(id)
 }
 
-// 벌크 삭제
-const bulkDelete = () => {
-  if (!selectedIds.value.length || !confirm(`선택한 ${selectedIds.value.length}개를 삭제하시겠습니까?`)) return
-  discounts.value = discounts.value.filter((d) => !selectedIds.value.includes(d.id))
-  selectedIds.value = []
-  uiStore.showToast({ type: 'success', message: '삭제되었습니다.' })
-}
-
-// 벌크 상태 변경
-const bulkStatusChange = (newStatus) => {
-  if (!selectedIds.value.length) return
-  discounts.value = discounts.value.map((d) =>
-    selectedIds.value.includes(d.id) ? { ...d, status: newStatus } : d
-  )
-  selectedIds.value = []
-  const statusLabel = statusOptions.find((s) => s.value === newStatus)?.label || newStatus
-  uiStore.showToast({ type: 'success', message: `상태가 "${statusLabel}"(으)로 변경되었습니다.` })
-}
-
 // 헬퍼 함수
-const getStatusBadge = (status) => statusOptions.find((s) => s.value === status) || statusOptions[3]
-const getCategoryLabel = (value) => categoryOptions.find((c) => c.value === value)?.label || value
-const getTargetLabel = (targetCategories) => {
-  if (!targetCategories || targetCategories.length === 0) return '전체'
-  if (targetCategories.length === 1) return getCategoryLabel(targetCategories[0])
-  return `${getCategoryLabel(targetCategories[0])} 외 ${targetCategories.length - 1}개`
+const getStatusBadge = (status) => {
+  return statusOptions.find((s) => s.value === status) || { label: status || '-', color: 'neutral' }
 }
-const formatDiscount = (type, value) => type === 'percent' ? `${value}%` : `${value.toLocaleString()}원`
-const formatPeriod = (start, end) => {
-  const startStr = start ? new Date(start).toLocaleDateString('ko-KR') : ''
-  const endStr = end ? new Date(end).toLocaleDateString('ko-KR') : '종료일 없음'
-  return `${startStr} ~ ${endStr}`
+
+const getDiscountTypeLabel = (type) => {
+  return discountTypeOptions.find((t) => t.value === type)?.label || type || '-'
+}
+
+const formatDiscountValue = (type, value) => {
+  if (type === 'RATE') {
+    return `${value}%`
+  }
+  return `${value?.toLocaleString() || 0}원`
 }
 
 // 페이지 이동
@@ -115,26 +120,31 @@ const goToCreate = () => router.push('/admin/promotions/discounts/new')
 const goToDetail = (discount) => router.push(`/admin/promotions/discounts/${discount.id}`)
 
 // 검색
-const handleSearch = () => { currentPage.value = 1 }
+const handleSearch = () => {
+  currentPage.value = 1
+  fetchDiscounts()
+}
 const handleReset = () => {
   filterStatus.value = ''
-  filterCategory.value = ''
   searchKeyword.value = ''
   currentPage.value = 1
+  fetchDiscounts()
 }
 
-// 페이지네이션
-const currentPage = ref(1)
-const perPage = 30
-const totalPages = computed(() => Math.ceil(filteredList.value.length / perPage))
-const paginatedList = computed(() => {
-  const start = (currentPage.value - 1) * perPage
-  return filteredList.value.slice(start, start + perPage)
+// 페이지 변경
+const handlePageChange = (page) => {
+  currentPage.value = page
+  fetchDiscounts()
+}
+
+// 초기 로드
+onMounted(() => {
+  fetchDiscounts()
 })
 </script>
 
 <template>
-  <LayoutListPage title="할인 관리" description="카테고리별 또는 전체 할인을 관리합니다.">
+  <LayoutListPage title="할인 관리" description="프로모션 할인을 관리합니다.">
     <template #actions>
       <UiButton variant="primary" @click="goToCreate">
         <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -147,27 +157,24 @@ const paginatedList = computed(() => {
     <template #filters>
       <DomainFilterCard @search="handleSearch" @reset="handleReset">
         <template #selects>
-          <select v-model="filterStatus" class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          <select
+            v-model="filterStatus"
+            class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
             <option value="">상태 전체</option>
             <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
-          <select v-model="filterCategory" class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-            <option value="">카테고리 전체</option>
-            <option v-for="opt in categoryOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
         </template>
         <template #search>
-          <input v-model="searchKeyword" type="text" placeholder="할인명 검색" class="flex-1 min-w-0 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" @keyup.enter="handleSearch">
+          <input
+            v-model="searchKeyword"
+            type="text"
+            placeholder="할인명으로 검색"
+            class="flex-1 min-w-0 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            @keyup.enter="handleSearch"
+          >
         </template>
       </DomainFilterCard>
-    </template>
-
-    <template #bulk>
-      <DomainBulkActionBar :count="selectedIds.length" :show="selectedIds.length > 0">
-        <UiButton variant="outline" size="sm" @click="bulkStatusChange('active')">활성화</UiButton>
-        <UiButton variant="outline" size="sm" @click="bulkStatusChange('inactive')">비활성화</UiButton>
-        <UiButton variant="danger" size="sm" @click="bulkDelete">삭제</UiButton>
-      </DomainBulkActionBar>
     </template>
 
     <!-- 안내 툴팁 -->
@@ -178,43 +185,83 @@ const paginatedList = computed(() => {
         </svg>
         <div class="text-sm text-primary-800">
           <p class="font-medium mb-1">할인 적용 안내</p>
-          <p class="text-primary-700">상품 별 할인을 원하시면 <strong>상품 수정</strong>에서 할인을 등록하시고, 카테고리 별 또는 전체 할인을 원하실 땐 여기서 등록하세요. 여기서 등록하는 할인이 우선 적용됩니다.</p>
+          <p class="text-primary-700">상품 별 할인을 원하시면 <strong>상품 수정</strong>에서 할인을 등록하시고, 카테고리 별 또는 전체 할인을 원하실 땐 여기서 등록하세요.</p>
         </div>
       </div>
     </div>
 
-    <DomainDataTable :columns="tableColumns" :items="paginatedList" :selected-ids="selectedIds" selectable empty-title="등록된 할인이 없습니다" @select="handleSelect" @select-all="handleSelectAll" @row-click="goToDetail">
+    <!-- 로딩 -->
+    <div v-if="isLoading" class="flex-1 flex items-center justify-center bg-white rounded-lg border border-neutral-200">
+      <UiSpinner size="lg" />
+    </div>
+
+    <DomainDataTable
+      v-else
+      :columns="tableColumns"
+      :items="filteredList"
+      :selected-ids="selectedIds"
+      selectable
+      empty-title="등록된 할인이 없습니다"
+      empty-description="새 할인을 등록해보세요."
+      @select="handleSelect"
+      @select-all="handleSelectAll"
+      @row-click="goToDetail"
+    >
       <template #cell-name="{ item }">
-        <span class="text-sm font-medium text-neutral-900">{{ item.name }}</span>
+        <p class="text-sm font-medium text-neutral-900">{{ item.name || '-' }}</p>
+        <p v-if="item.applicableTarget" class="text-xs text-neutral-500 mt-0.5">{{ item.applicableTarget }}</p>
       </template>
-      <template #cell-discount="{ item }">
-        <span class="text-sm font-semibold text-primary-600">{{ formatDiscount(item.type, item.value) }}</span>
+
+      <template #cell-discountType="{ item }">
+        <span class="text-sm text-neutral-600">{{ getDiscountTypeLabel(item.discountType) }}</span>
       </template>
-      <template #cell-target="{ item }">
-        <span class="text-sm text-neutral-600">{{ getTargetLabel(item.targetCategories) }}</span>
+
+      <template #cell-discountValue="{ item }">
+        <span class="text-sm font-medium text-primary-600">{{ formatDiscountValue(item.discountType, item.discountValue) }}</span>
       </template>
+
       <template #cell-period="{ item }">
-        <span class="text-sm text-neutral-500">{{ formatPeriod(item.startDate, item.endDate) }}</span>
+        <div class="text-sm text-neutral-600">
+          <p>{{ item.startedAt ? formatDate(item.startedAt) : '-' }}</p>
+          <p class="text-xs text-neutral-400">~ {{ item.endedAt ? formatDate(item.endedAt) : '종료일 없음' }}</p>
+        </div>
       </template>
+
       <template #cell-status="{ item }">
-        <UiBadge :variant="getStatusBadge(item.status).color" size="sm">{{ getStatusBadge(item.status).label }}</UiBadge>
+        <UiBadge :variant="getStatusBadge(item.status).color" size="sm">
+          {{ getStatusBadge(item.status).label }}
+        </UiBadge>
       </template>
+
       <template #mobile-card="{ item }">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-sm font-medium text-neutral-900">{{ item.name }}</span>
-          <UiBadge :variant="getStatusBadge(item.status).color" size="sm">{{ getStatusBadge(item.status).label }}</UiBadge>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <p class="text-sm font-medium text-neutral-900">{{ item.name || '-' }}</p>
+            <UiBadge :variant="getStatusBadge(item.status).color" size="sm">
+              {{ getStatusBadge(item.status).label }}
+            </UiBadge>
+          </div>
+          <div class="flex items-center gap-3 text-xs text-neutral-500">
+            <span>{{ getDiscountTypeLabel(item.discountType) }}</span>
+            <span class="font-medium text-primary-600">{{ formatDiscountValue(item.discountType, item.discountValue) }}</span>
+          </div>
+          <p v-if="item.applicableTarget" class="text-xs text-neutral-500">{{ item.applicableTarget }}</p>
+          <p class="text-xs text-neutral-400">
+            {{ item.startedAt ? formatDate(item.startedAt) : '-' }} ~ {{ item.endedAt ? formatDate(item.endedAt) : '종료일 없음' }}
+          </p>
         </div>
-        <div class="flex items-center gap-3 text-sm mb-1">
-          <span class="font-semibold text-primary-600">{{ formatDiscount(item.type, item.value) }}</span>
-          <span class="text-neutral-400">|</span>
-          <span class="text-neutral-600">{{ getTargetLabel(item.targetCategories) }}</span>
-        </div>
-        <p class="text-xs text-neutral-400">{{ formatPeriod(item.startDate, item.endDate) }}</p>
       </template>
     </DomainDataTable>
 
     <template #pagination>
-      <UiPagination v-model:currentPage="currentPage" :total-pages="totalPages" :total-items="filteredList.length" :per-page="perPage" />
+      <UiPagination
+        v-if="totalPages > 0 && !isLoading"
+        v-model:current-page="currentPage"
+        :total-pages="totalPages"
+        :total-items="totalItems"
+        :per-page="perPage"
+        @change="handlePageChange"
+      />
     </template>
   </LayoutListPage>
 </template>
