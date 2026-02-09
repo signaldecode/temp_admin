@@ -52,6 +52,7 @@ export const navigationItems = [
       { id: 'contents-notices', label: '공지사항', to: '/admin/contents/notices' },
       { id: 'contents-faq', label: 'FAQ', to: '/admin/contents/faq' },
       { id: 'contents-qna', label: 'Q&A', to: '/admin/contents/qna' },
+      { id: 'contents-reviews', label: '리뷰 관리', to: '/admin/contents/reviews' },
     ],
   },
   {
