@@ -7,6 +7,7 @@
 
 import { useUiStore } from '~/stores/ui'
 import { usePromotion } from '~/composables/usePromotion'
+import { validateDiscountValue, clampDiscountValue } from '~/utils/discountValidation'
 
 const route = useRoute()
 const router = useRouter()
@@ -100,20 +101,24 @@ const fetchDiscount = async () => {
   }
 }
 
+// 할인값 실시간 제한
+const handleDiscountValueInput = () => {
+  form.value.discountValue = clampDiscountValue(form.value.discountType, form.value.discountValue)
+}
+
 // 저장
 const handleSave = async () => {
   if (!form.value.name) {
     uiStore.showToast({ type: 'error', message: '할인명을 입력해주세요.' })
     return
   }
-  if (form.value.discountValue <= 0) {
-    uiStore.showToast({ type: 'error', message: '할인 금액/비율을 입력해주세요.' })
+
+  const discountValidation = validateDiscountValue(form.value.discountType, form.value.discountValue)
+  if (!discountValidation.valid) {
+    uiStore.showToast({ type: 'error', message: discountValidation.message })
     return
   }
-  if (form.value.discountType === 'RATE' && form.value.discountValue > 100) {
-    uiStore.showToast({ type: 'error', message: '할인율은 100%를 초과할 수 없습니다.' })
-    return
-  }
+
   if (!form.value.startedAt) {
     uiStore.showToast({ type: 'error', message: '시작일을 입력해주세요.' })
     return
@@ -267,14 +272,18 @@ onMounted(async () => {
                   v-model.number="form.discountValue"
                   type="number"
                   min="0"
-                  :max="form.discountType === 'RATE' ? 100 : undefined"
+                  :max="form.discountType === 'RATE' ? 99 : 999999"
                   class="w-full px-3 py-2 pr-12 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="0"
+                  @input="handleDiscountValueInput"
                 >
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500">
                   {{ form.discountType === 'RATE' ? '%' : '원' }}
                 </span>
               </div>
+              <p class="text-xs text-neutral-400 mt-1">
+                {{ form.discountType === 'RATE' ? '최대 99%' : '최대 999,999원' }}
+              </p>
             </div>
           </div>
         </div>

@@ -7,6 +7,7 @@
 
 import { useUiStore } from '~/stores/ui'
 import { useCoupon } from '~/composables/useCoupon'
+import { validateDiscountValue, clampDiscountValue, clampAmountValue } from '~/utils/discountValidation'
 
 const route = useRoute()
 const router = useRouter()
@@ -164,18 +165,26 @@ const fetchCoupon = async () => {
   isLoading.value = false
 }
 
+// 할인값 실시간 제한
+const handleDiscountValueInput = () => {
+  form.value.discountValue = clampDiscountValue(form.value.discountMethod, form.value.discountValue)
+}
+
+// 금액 입력 실시간 제한 (20자리)
+const handleAmountInput = (field) => {
+  form.value[field] = clampAmountValue(form.value[field])
+}
+
 // 저장
 const handleSave = async () => {
   if (!form.value.name) {
     uiStore.showToast({ type: 'error', message: '쿠폰명을 입력해주세요.' })
     return
   }
-  if (form.value.discountValue <= 0) {
-    uiStore.showToast({ type: 'error', message: '할인 금액/비율을 입력해주세요.' })
-    return
-  }
-  if (form.value.discountMethod === 'RATE' && form.value.discountValue > 100) {
-    uiStore.showToast({ type: 'error', message: '할인율은 100%를 초과할 수 없습니다.' })
+
+  const discountValidation = validateDiscountValue(form.value.discountMethod, form.value.discountValue)
+  if (!discountValidation.valid) {
+    uiStore.showToast({ type: 'error', message: discountValidation.message })
     return
   }
 
@@ -332,14 +341,18 @@ onMounted(async () => {
                   v-model.number="form.discountValue"
                   type="number"
                   min="0"
-                  :max="form.discountMethod === 'RATE' ? 100 : undefined"
+                  :max="form.discountMethod === 'RATE' ? 99 : 999999"
                   class="w-full px-3 py-2 pr-12 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="0"
+                  @input="handleDiscountValueInput"
                 >
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500">
                   {{ form.discountMethod === 'RATE' ? '%' : '원' }}
                 </span>
               </div>
+              <p class="text-xs text-neutral-400 mt-1">
+                {{ form.discountMethod === 'RATE' ? '최대 99%' : '최대 999,999원' }}
+              </p>
             </div>
           </div>
 
@@ -354,6 +367,7 @@ onMounted(async () => {
                   min="0"
                   class="w-full px-3 py-2 pr-8 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="0"
+                  @input="handleAmountInput('maxDiscountAmount')"
                 >
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500">원</span>
               </div>
@@ -372,6 +386,7 @@ onMounted(async () => {
                   min="0"
                   class="w-full px-3 py-2 pr-8 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="0"
+                  @input="handleAmountInput('minOrderAmount')"
                 >
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500">원</span>
               </div>

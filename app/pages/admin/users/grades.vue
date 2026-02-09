@@ -34,8 +34,6 @@ const grades = ref([
     name: 'VVIP',
     color: 'error',
     minAmount: 5000000,
-    discountRate: 10,
-    pointRate: 5,
     benefits: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs', 'early_access', 'free_return'],
     memberCount: 12,
   },
@@ -44,8 +42,6 @@ const grades = ref([
     name: 'VIP',
     color: 'warning',
     minAmount: 1000000,
-    discountRate: 5,
-    pointRate: 3,
     benefits: ['free_shipping', 'vip_coupon', 'birthday_benefit'],
     memberCount: 45,
   },
@@ -54,8 +50,6 @@ const grades = ref([
     name: '일반',
     color: 'neutral',
     minAmount: 0,
-    discountRate: 0,
-    pointRate: 1,
     benefits: [],
     memberCount: 238,
   },
@@ -74,8 +68,6 @@ const editingGrade = ref(null)
 const editForm = ref({
   name: '',
   minAmount: 0,
-  discountRate: 0,
-  pointRate: 0,
   benefits: [],
 })
 
@@ -85,8 +77,6 @@ const openEditModal = (grade) => {
   editForm.value = {
     name: grade.name,
     minAmount: grade.minAmount,
-    discountRate: grade.discountRate,
-    pointRate: grade.pointRate,
     benefits: [...grade.benefits],
   }
   showEditModal.value = true
@@ -117,8 +107,6 @@ const saveGrade = () => {
       ...grades.value[index],
       name: editForm.value.name,
       minAmount: Number(editForm.value.minAmount),
-      discountRate: Number(editForm.value.discountRate),
-      pointRate: Number(editForm.value.pointRate),
       benefits: [...editForm.value.benefits],
     }
   }
@@ -201,29 +189,21 @@ const viewMembers = (gradeName) => {
           <!-- 혜택 -->
           <div>
             <h4 class="text-xs font-medium text-neutral-500 uppercase mb-2">혜택</h4>
-            <div class="space-y-1">
-              <p class="text-sm text-neutral-900">
-                할인율 <span class="font-semibold">{{ grade.discountRate }}%</span>
-              </p>
-              <p class="text-sm text-neutral-900">
-                적립률 <span class="font-semibold">{{ grade.pointRate }}%</span>
-              </p>
-              <div v-if="grade.benefits.length > 0" class="mt-2">
-                <ul class="text-sm text-neutral-600 space-y-1">
-                  <li
-                    v-for="benefitId in grade.benefits"
-                    :key="benefitId"
-                    class="flex items-center gap-1"
-                  >
-                    <svg class="w-3 h-3 text-success-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                    {{ getBenefitLabel(benefitId) }}
-                  </li>
-                </ul>
-              </div>
-              <p v-else class="text-sm text-neutral-400 mt-2">추가 혜택 없음</p>
+            <div v-if="grade.benefits.length > 0">
+              <ul class="text-sm text-neutral-600 space-y-1">
+                <li
+                  v-for="benefitId in grade.benefits"
+                  :key="benefitId"
+                  class="flex items-center gap-1"
+                >
+                  <svg class="w-3 h-3 text-success-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  {{ getBenefitLabel(benefitId) }}
+                </li>
+              </ul>
             </div>
+            <p v-else class="text-sm text-neutral-400">추가 혜택 없음</p>
           </div>
         </div>
 
@@ -287,40 +267,6 @@ const viewMembers = (gradeName) => {
               class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
             <span class="text-sm text-neutral-500">원 이상</span>
-          </div>
-        </div>
-
-        <!-- 할인율 -->
-        <div>
-          <label class="block text-sm font-medium text-neutral-700 mb-1">
-            할인율
-          </label>
-          <div class="flex items-center gap-2">
-            <input
-              v-model="editForm.discountRate"
-              type="number"
-              min="0"
-              max="100"
-              class="w-24 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-            <span class="text-sm text-neutral-500">%</span>
-          </div>
-        </div>
-
-        <!-- 적립률 -->
-        <div>
-          <label class="block text-sm font-medium text-neutral-700 mb-1">
-            포인트 적립률
-          </label>
-          <div class="flex items-center gap-2">
-            <input
-              v-model="editForm.pointRate"
-              type="number"
-              min="0"
-              max="100"
-              class="w-24 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-            <span class="text-sm text-neutral-500">%</span>
           </div>
         </div>
 
