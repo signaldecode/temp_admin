@@ -17,162 +17,117 @@ const {
   issuanceStatusOptions,
   discountMethodOptions,
   getDefaultNotes,
+  getCoupon,
+  createCoupon,
+  updateCoupon,
+  deleteCoupon,
+  updateCouponStatus,
 } = useCoupon()
-
-// 더미 데이터
-const mockCoupons = [
-  {
-    id: 1,
-    name: '신규 회원 10% 할인',
-    description: '가입 후 7일 이내 사용 가능',
-    couponType: 'PRODUCT',
-    status: 'ISSUING',
-    totalLimit: 1000,
-    discountMethod: 'RATE',
-    discountValue: 10,
-    allowOverlap: true,
-    minOrderAmount: 30000,
-    maxDiscountAmount: 5000,
-    validityType: 'DAYS',
-    validDays: 7,
-    notes: '본 쿠폰은 일부 상품에 적용되지 않을 수 있습니다.\n다른 쿠폰과 중복 사용이 불가할 수 있습니다.\n유효기간 내 미사용 시 자동 소멸됩니다.',
-  },
-  {
-    id: 2,
-    name: '첫 구매 5,000원 할인',
-    description: '첫 구매 고객 전용 쿠폰',
-    couponType: 'PRODUCT',
-    status: 'ISSUING',
-    totalLimit: 500,
-    discountMethod: 'AMOUNT',
-    discountValue: 5000,
-    allowOverlap: false,
-    minOrderAmount: 20000,
-    maxDiscountAmount: 0,
-    validityType: 'DAYS',
-    validDays: 30,
-  },
-  {
-    id: 3,
-    name: '무료 배송 쿠폰',
-    description: '5만원 이상 구매 시 무료 배송',
-    couponType: 'SHIPPING',
-    status: 'ISSUING',
-    totalLimit: 0,
-    discountMethod: 'AMOUNT',
-    discountValue: 3000,
-    allowOverlap: true,
-    minOrderAmount: 50000,
-    maxDiscountAmount: 0,
-    validityType: 'DAYS',
-    validDays: 30,
-  },
-  {
-    id: 4,
-    name: '여름 특별 20% 할인',
-    description: '여름 시즌 한정 특별 할인',
-    couponType: 'PRODUCT',
-    status: 'ENDED',
-    totalLimit: 2000,
-    discountMethod: 'RATE',
-    discountValue: 20,
-    allowOverlap: false,
-    minOrderAmount: 50000,
-    maxDiscountAmount: 10000,
-    validityType: 'PERIOD',
-    validStartAt: '2025-06-01T00:00',
-    validEndAt: '2025-08-31T23:59',
-  },
-  {
-    id: 5,
-    name: '교환 무료 쿠폰',
-    description: '교환 배송비 무료',
-    couponType: 'PRODUCT',
-    status: 'REGISTERED',
-    totalLimit: 100,
-    discountMethod: 'AMOUNT',
-    discountValue: 6000,
-    allowOverlap: true,
-    minOrderAmount: 0,
-    maxDiscountAmount: 0,
-    validityType: 'DAYS',
-    validDays: 90,
-  },
-]
 
 // 모드 판별
 const isEditMode = computed(() => route.params.id !== 'new')
 const couponId = computed(() => route.params.id)
 
+// 발급중 상태면 수정 불가
+const isDisabled = computed(() => isEditMode.value && form.value.status === 'ACTIVE')
+
 // 폼 데이터
 const form = ref({
   name: '',
   description: '',
-  couponType: 'PRODUCT',
+  couponType: 'PRODUCT_DISCOUNT',
   status: 'REGISTERED',
-  totalLimit: 0,
-  discountMethod: 'AMOUNT',
+  totalQuantity: 0,
+  discountType: 'AMOUNT',
   discountValue: 0,
-  allowOverlap: true,
+  allowPromotionOverlap: false,
+  allowDuplicateUse: false,
   minOrderAmount: 0,
   maxDiscountAmount: 0,
-  validityType: 'DAYS',
-  validDays: 30,
-  validStartAt: '',
-  validEndAt: '',
-  notes: '',
+  validityType: 'DAYS_FROM_DOWNLOAD',
+  validityDays: 30,
+  validFrom: '',
+  validTo: '',
+  notice: '',
 })
 
 // 쿠폰 타입 변경 시 기본 유의사항으로 초기화
 watch(() => form.value.couponType, (newType) => {
   const defaultNotes = getDefaultNotes(newType)
-  form.value.notes = defaultNotes.join('\n')
+  form.value.notice = defaultNotes.join('\n')
 })
 
 const isLoading = ref(false)
 const isSaving = ref(false)
 
-// 데이터 로드 (목데이터)
+// 데이터 로드
 const fetchCoupon = async () => {
   isLoading.value = true
-  await new Promise(resolve => setTimeout(resolve, 300))
 
-  const data = mockCoupons.find(c => c.id === Number(couponId.value))
+  try {
+    const data = await getCoupon(couponId.value)
 
-  if (data) {
     form.value = {
       name: data.name || '',
       description: data.description || '',
-      couponType: data.couponType || 'PRODUCT',
+      couponType: data.couponType || 'PRODUCT_DISCOUNT',
       status: data.status || 'REGISTERED',
-      totalLimit: data.totalLimit || 0,
-      discountMethod: data.discountMethod || 'AMOUNT',
+      totalQuantity: data.totalQuantity || 0,
+      discountType: data.discountType || 'AMOUNT',
       discountValue: data.discountValue || 0,
-      allowOverlap: data.allowOverlap ?? true,
+      allowPromotionOverlap: data.allowPromotionOverlap ?? false,
+      allowDuplicateUse: data.allowDuplicateUse ?? false,
       minOrderAmount: data.minOrderAmount || 0,
       maxDiscountAmount: data.maxDiscountAmount || 0,
-      validityType: data.validityType || 'DAYS',
-      validDays: data.validDays || 30,
-      validStartAt: data.validStartAt || '',
-      validEndAt: data.validEndAt || '',
-      notes: data.notes || getDefaultNotes(data.couponType || 'PRODUCT').join('\n'),
+      validityType: data.validityType || 'DAYS_FROM_DOWNLOAD',
+      validityDays: data.validityDays || 30,
+      validFrom: data.validFrom ? data.validFrom.slice(0, 16) : '',
+      validTo: data.validTo ? data.validTo.slice(0, 16) : '',
+      notice: data.notice || getDefaultNotes(data.couponType || 'PRODUCT_DISCOUNT').join('\n'),
     }
-  } else {
-    uiStore.showToast({ type: 'error', message: '쿠폰을 찾을 수 없습니다.' })
+  } catch (error) {
+    uiStore.showToast({ type: 'error', message: error.message || '쿠폰을 찾을 수 없습니다.' })
     router.push('/admin/promotions/coupons')
+  } finally {
+    isLoading.value = false
   }
-
-  isLoading.value = false
 }
 
 // 할인값 실시간 제한
 const handleDiscountValueInput = () => {
-  form.value.discountValue = clampDiscountValue(form.value.discountMethod, form.value.discountValue)
+  form.value.discountValue = clampDiscountValue(form.value.discountType, form.value.discountValue)
 }
 
 // 금액 입력 실시간 제한 (20자리)
 const handleAmountInput = (field) => {
   form.value[field] = clampAmountValue(form.value[field])
+}
+
+// API 요청 페이로드 생성
+const buildPayload = () => {
+  const payload = {
+    name: form.value.name,
+    description: form.value.description,
+    couponType: form.value.couponType,
+    notice: form.value.notice,
+    discountType: form.value.discountType,
+    discountValue: form.value.discountValue,
+    maxDiscountAmount: form.value.maxDiscountAmount,
+    minOrderAmount: form.value.minOrderAmount,
+    totalQuantity: form.value.totalQuantity,
+    validityType: form.value.validityType,
+    allowPromotionOverlap: form.value.allowPromotionOverlap,
+    allowDuplicateUse: form.value.allowDuplicateUse,
+  }
+
+  if (form.value.validityType === 'DAYS_FROM_DOWNLOAD') {
+    payload.validityDays = form.value.validityDays
+  } else {
+    payload.validFrom = form.value.validFrom ? new Date(form.value.validFrom).toISOString() : null
+    payload.validTo = form.value.validTo ? new Date(form.value.validTo).toISOString() : null
+  }
+
+  return payload
 }
 
 // 저장
@@ -182,39 +137,88 @@ const handleSave = async () => {
     return
   }
 
-  const discountValidation = validateDiscountValue(form.value.discountMethod, form.value.discountValue)
+  const discountValidation = validateDiscountValue(form.value.discountType, form.value.discountValue)
   if (!discountValidation.valid) {
     uiStore.showToast({ type: 'error', message: discountValidation.message })
     return
   }
 
   isSaving.value = true
-  await new Promise(resolve => setTimeout(resolve, 300))
 
-  if (isEditMode.value) {
-    uiStore.showToast({ type: 'success', message: '쿠폰이 수정되었습니다.' })
-  } else {
-    uiStore.showToast({ type: 'success', message: '쿠폰이 등록되었습니다.' })
+  try {
+    const payload = buildPayload()
+
+    if (isEditMode.value) {
+      await updateCoupon(couponId.value, payload)
+      uiStore.showToast({ type: 'success', message: '쿠폰이 수정되었습니다.' })
+    } else {
+      await createCoupon(payload)
+      uiStore.showToast({ type: 'success', message: '쿠폰이 등록되었습니다.' })
+    }
+
+    router.push('/admin/promotions/coupons')
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '저장에 실패했습니다.',
+    })
+  } finally {
+    isSaving.value = false
   }
-
-  isSaving.value = false
-  router.push('/admin/promotions/coupons')
 }
 
 // 삭제
 const handleDelete = async () => {
   if (!confirm('이 쿠폰을 삭제하시겠습니까?')) return
-  uiStore.showToast({ type: 'success', message: '삭제되었습니다.' })
-  router.push('/admin/promotions/coupons')
+
+  try {
+    await deleteCoupon(couponId.value)
+    uiStore.showToast({ type: 'success', message: '삭제되었습니다.' })
+    router.push('/admin/promotions/coupons')
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '삭제에 실패했습니다.',
+    })
+  }
 }
 
 const handleCancel = () => router.back()
+
+// 상태 변경 모달
+const showStatusModal = ref(false)
+const targetStatus = ref('')
+
+const openStatusModal = (status) => {
+  targetStatus.value = status
+  showStatusModal.value = true
+}
+
+const handleStatusChange = async () => {
+  try {
+    await updateCouponStatus(couponId.value, targetStatus.value)
+
+    const statusLabel = issuanceStatusOptions.find(s => s.value === targetStatus.value)?.label || targetStatus.value
+    uiStore.showToast({
+      type: 'success',
+      message: `쿠폰이 ${statusLabel} 처리되었습니다.`,
+    })
+
+    form.value.status = targetStatus.value
+    showStatusModal.value = false
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '상태 변경에 실패했습니다.',
+    })
+  }
+}
 
 onMounted(async () => {
   if (isEditMode.value) {
     await fetchCoupon()
   } else {
-    form.value.notes = getDefaultNotes(form.value.couponType).join('\n')
+    form.value.notice = getDefaultNotes(form.value.couponType).join('\n')
   }
 })
 </script>
@@ -224,8 +228,10 @@ onMounted(async () => {
     :title="isEditMode ? '쿠폰 수정' : '쿠폰 등록'"
     :description="isEditMode ? '쿠폰 정보를 수정합니다.' : '새 쿠폰을 등록합니다.'"
     :is-saving="isSaving"
+    :save-disabled="isDisabled"
+    :show-save="!isDisabled"
     show-cancel
-    :show-delete="isEditMode"
+    :show-delete="isEditMode && !isDisabled"
     @save="handleSave"
     @cancel="handleCancel"
     @delete="handleDelete"
@@ -240,19 +246,68 @@ onMounted(async () => {
         <div class="flex items-center justify-between">
           <div>
             <p class="text-sm font-medium text-neutral-900">현재 상태</p>
-            <p class="text-xs text-neutral-500 mt-0.5">쿠폰 발급 상태는 목록에서 변경할 수 있습니다.</p>
+            <p class="text-xs text-neutral-500 mt-0.5">상태를 변경하려면 우측 버튼을 클릭하세요.</p>
           </div>
-          <span
-            :class="[
-              'text-sm font-bold',
-              form.status === 'REGISTERED' ? 'text-neutral-600' : '',
-              form.status === 'ISSUING' ? 'text-success-600' : '',
-              form.status === 'STOPPED' ? 'text-warning-600' : '',
-              form.status === 'ENDED' ? 'text-error-600' : '',
-            ]"
-          >
-            {{ issuanceStatusOptions.find(s => s.value === form.status)?.label || form.status }}
-          </span>
+          <div class="flex items-center gap-3">
+            <span
+              :class="[
+                'text-sm font-bold',
+                form.status === 'REGISTERED' ? 'text-neutral-600' : '',
+                form.status === 'ACTIVE' ? 'text-success-600' : '',
+                form.status === 'STOPPED' ? 'text-warning-600' : '',
+                form.status === 'ENDED' ? 'text-error-600' : '',
+              ]"
+            >
+              {{ issuanceStatusOptions.find(s => s.value === form.status)?.label || form.status }}
+            </span>
+
+            <!-- 상태 변경 버튼 -->
+            <!-- 등록 → 발급 시작 -->
+            <button
+              v-if="form.status === 'REGISTERED'"
+              class="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+              @click="openStatusModal('ACTIVE')"
+            >
+              발급 시작
+            </button>
+
+            <!-- 발급중 → 발급 중지 -->
+            <button
+              v-else-if="form.status === 'ACTIVE'"
+              class="px-3 py-1.5 text-xs font-medium text-white bg-warning-600 hover:bg-warning-700 rounded-lg transition-colors"
+              @click="openStatusModal('STOPPED')"
+            >
+              발급 중지
+            </button>
+
+            <!-- 발급중지 → 발급 재개 또는 종료 -->
+            <template v-else-if="form.status === 'STOPPED'">
+              <button
+                class="px-3 py-1.5 text-xs font-medium text-white bg-success-600 hover:bg-success-700 rounded-lg transition-colors"
+                @click="openStatusModal('ACTIVE')"
+              >
+                발급 재개
+              </button>
+              <button
+                class="px-3 py-1.5 text-xs font-medium text-white bg-error-600 hover:bg-error-700 rounded-lg transition-colors"
+                @click="openStatusModal('ENDED')"
+              >
+                종료
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <!-- 발급중일 때 수정 불가 안내 -->
+        <div v-if="isDisabled" class="mt-4 p-3 bg-warning-50 border border-warning-200 rounded-lg">
+          <div class="flex gap-2">
+            <svg class="w-5 h-5 text-warning-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <p class="text-sm text-warning-700">
+              발급중인 쿠폰은 수정할 수 없습니다. 수정이 필요한 경우 발급을 중지한 후 수정해주세요.
+            </p>
+          </div>
         </div>
       </UiCard>
 
@@ -267,7 +322,8 @@ onMounted(async () => {
             <input
               v-model="form.name"
               type="text"
-              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              :disabled="isDisabled"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-neutral-100 disabled:text-neutral-500 disabled:cursor-not-allowed"
               placeholder="예: 신규 회원 10% 할인 쿠폰"
             >
           </div>
@@ -278,7 +334,8 @@ onMounted(async () => {
             <textarea
               v-model="form.description"
               rows="2"
-              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+              :disabled="isDisabled"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none disabled:bg-neutral-100 disabled:text-neutral-500 disabled:cursor-not-allowed"
               placeholder="쿠폰 사용 안내 문구를 입력하세요."
             />
           </div>
@@ -293,16 +350,30 @@ onMounted(async () => {
                 v-for="opt in couponTypeOptions"
                 :key="opt.value"
                 :class="[
-                  'px-4 py-2 border rounded-lg cursor-pointer transition-colors text-sm',
+                  'px-4 py-2 border rounded-lg transition-colors text-sm',
+                  isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
                   form.couponType === opt.value
                     ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
                     : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
                 ]"
               >
-                <input v-model="form.couponType" type="radio" :value="opt.value" class="sr-only">
+                <input v-model="form.couponType" type="radio" :value="opt.value" :disabled="isDisabled" class="sr-only">
                 {{ opt.label }}
               </label>
             </div>
+          </div>
+
+          <!-- 유의사항 -->
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">유의사항</label>
+            <textarea
+              v-model="form.notice"
+              rows="4"
+              :disabled="isDisabled"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none disabled:bg-neutral-100 disabled:text-neutral-500 disabled:cursor-not-allowed"
+              placeholder="쿠폰 유의사항을 입력하세요."
+            />
+            <p class="text-xs text-neutral-400 mt-1">쿠폰 타입 변경 시 기본 유의사항으로 초기화됩니다.</p>
           </div>
         </div>
       </UiCard>
@@ -321,43 +392,45 @@ onMounted(async () => {
                   v-for="opt in discountMethodOptions"
                   :key="opt.value"
                   :class="[
-                    'flex-1 px-4 py-2 border rounded-lg cursor-pointer transition-colors text-center text-sm',
-                    form.discountMethod === opt.value
+                    'flex-1 px-4 py-2 border rounded-lg transition-colors text-center text-sm',
+                    isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                    form.discountType === opt.value
                       ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
                       : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
                   ]"
                 >
-                  <input v-model="form.discountMethod" type="radio" :value="opt.value" class="sr-only">
+                  <input v-model="form.discountType" type="radio" :value="opt.value" :disabled="isDisabled" class="sr-only">
                   {{ opt.label }}
                 </label>
               </div>
             </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">
-                할인 {{ form.discountMethod === 'RATE' ? '비율' : '금액' }} <span class="text-error-500">*</span>
+                할인 {{ form.discountType === 'RATE' ? '비율' : '금액' }} <span class="text-error-500">*</span>
               </label>
               <div class="relative">
                 <input
                   v-model.number="form.discountValue"
                   type="number"
                   min="0"
-                  :max="form.discountMethod === 'RATE' ? 99 : 999999"
-                  class="w-full px-3 py-2 pr-12 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  :max="form.discountType === 'RATE' ? 99 : 999999"
+                  :disabled="isDisabled"
+                  class="w-full px-3 py-2 pr-12 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-neutral-100 disabled:text-neutral-500 disabled:cursor-not-allowed"
                   placeholder="0"
                   @input="handleDiscountValueInput"
                 >
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500">
-                  {{ form.discountMethod === 'RATE' ? '%' : '원' }}
+                  {{ form.discountType === 'RATE' ? '%' : '원' }}
                 </span>
               </div>
               <p class="text-xs text-neutral-400 mt-1">
-                {{ form.discountMethod === 'RATE' ? '최대 99%' : '최대 999,999원' }}
+                {{ form.discountType === 'RATE' ? '최대 99%' : '최대 999,999원' }}
               </p>
             </div>
           </div>
 
           <!-- 정률 할인 시 최대 할인 금액 -->
-          <div v-if="form.discountMethod === 'RATE'" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div v-if="form.discountType === 'RATE'" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">최대 할인 금액</label>
               <div class="relative">
@@ -365,7 +438,8 @@ onMounted(async () => {
                   v-model.number="form.maxDiscountAmount"
                   type="number"
                   min="0"
-                  class="w-full px-3 py-2 pr-8 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  :disabled="isDisabled"
+                  class="w-full px-3 py-2 pr-8 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-neutral-100 disabled:text-neutral-500 disabled:cursor-not-allowed"
                   placeholder="0"
                   @input="handleAmountInput('maxDiscountAmount')"
                 >
@@ -384,7 +458,8 @@ onMounted(async () => {
                   v-model.number="form.minOrderAmount"
                   type="number"
                   min="0"
-                  class="w-full px-3 py-2 pr-8 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  :disabled="isDisabled"
+                  class="w-full px-3 py-2 pr-8 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-neutral-100 disabled:text-neutral-500 disabled:cursor-not-allowed"
                   placeholder="0"
                   @input="handleAmountInput('minOrderAmount')"
                 >
@@ -394,34 +469,68 @@ onMounted(async () => {
             </div>
           </div>
 
-          <!-- 중복 할인 여부 -->
+          <!-- 프로모션 할인과 중복 적용 -->
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-2">프로모션 할인과 중복 적용</label>
             <div class="flex gap-3">
               <label
                 :class="[
-                  'px-4 py-2 border rounded-lg cursor-pointer transition-colors text-sm',
-                  form.allowOverlap
+                  'px-4 py-2 border rounded-lg transition-colors text-sm',
+                  isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                  form.allowPromotionOverlap
                     ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
                     : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
                 ]"
               >
-                <input v-model="form.allowOverlap" type="radio" :value="true" class="sr-only">
+                <input v-model="form.allowPromotionOverlap" type="radio" :value="true" :disabled="isDisabled" class="sr-only">
                 가능
               </label>
               <label
                 :class="[
-                  'px-4 py-2 border rounded-lg cursor-pointer transition-colors text-sm',
-                  !form.allowOverlap
+                  'px-4 py-2 border rounded-lg transition-colors text-sm',
+                  isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                  !form.allowPromotionOverlap
                     ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
                     : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
                 ]"
               >
-                <input v-model="form.allowOverlap" type="radio" :value="false" class="sr-only">
+                <input v-model="form.allowPromotionOverlap" type="radio" :value="false" :disabled="isDisabled" class="sr-only">
                 불가
               </label>
             </div>
             <p class="text-xs text-neutral-400 mt-1">불가 선택 시, 프로모션 할인 상품에서는 해당 쿠폰이 비활성화됩니다.</p>
+          </div>
+
+          <!-- 중복 사용 여부 -->
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-2">동일 쿠폰 중복 사용</label>
+            <div class="flex gap-3">
+              <label
+                :class="[
+                  'px-4 py-2 border rounded-lg transition-colors text-sm',
+                  isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                  form.allowDuplicateUse
+                    ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
+                    : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
+                ]"
+              >
+                <input v-model="form.allowDuplicateUse" type="radio" :value="true" :disabled="isDisabled" class="sr-only">
+                가능
+              </label>
+              <label
+                :class="[
+                  'px-4 py-2 border rounded-lg transition-colors text-sm',
+                  isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                  !form.allowDuplicateUse
+                    ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
+                    : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
+                ]"
+              >
+                <input v-model="form.allowDuplicateUse" type="radio" :value="false" :disabled="isDisabled" class="sr-only">
+                불가
+              </label>
+            </div>
+            <p class="text-xs text-neutral-400 mt-1">가능 선택 시, 한 회원이 동일 쿠폰을 여러 번 다운로드하여 사용할 수 있습니다.</p>
           </div>
         </div>
       </UiCard>
@@ -435,10 +544,11 @@ onMounted(async () => {
               <label class="block text-sm font-medium text-neutral-700 mb-1">총 발급 수량</label>
               <div class="relative">
                 <input
-                  v-model.number="form.totalLimit"
+                  v-model.number="form.totalQuantity"
                   type="number"
                   min="0"
-                  class="w-full px-3 py-2 pr-8 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  :disabled="isDisabled"
+                  class="w-full px-3 py-2 pr-8 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-neutral-100 disabled:text-neutral-500 disabled:cursor-not-allowed"
                   placeholder="0"
                 >
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500">매</span>
@@ -453,36 +563,39 @@ onMounted(async () => {
             <div class="flex gap-3 mb-4">
               <label
                 :class="[
-                  'px-4 py-2 border rounded-lg cursor-pointer transition-colors text-sm',
-                  form.validityType === 'DAYS'
+                  'px-4 py-2 border rounded-lg transition-colors text-sm',
+                  isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                  form.validityType === 'DAYS_FROM_DOWNLOAD'
                     ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
                     : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
                 ]"
               >
-                <input v-model="form.validityType" type="radio" value="DAYS" class="sr-only">
+                <input v-model="form.validityType" type="radio" value="DAYS_FROM_DOWNLOAD" :disabled="isDisabled" class="sr-only">
                 발급일로부터
               </label>
               <label
                 :class="[
-                  'px-4 py-2 border rounded-lg cursor-pointer transition-colors text-sm',
+                  'px-4 py-2 border rounded-lg transition-colors text-sm',
+                  isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
                   form.validityType === 'PERIOD'
                     ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
                     : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
                 ]"
               >
-                <input v-model="form.validityType" type="radio" value="PERIOD" class="sr-only">
+                <input v-model="form.validityType" type="radio" value="PERIOD" :disabled="isDisabled" class="sr-only">
                 기간 설정
               </label>
             </div>
 
             <!-- 발급일로부터 N일 -->
-            <div v-if="form.validityType === 'DAYS'" class="flex items-center gap-3">
+            <div v-if="form.validityType === 'DAYS_FROM_DOWNLOAD'" class="flex items-center gap-3">
               <span class="text-sm text-neutral-600">다운로드 후</span>
               <input
-                v-model.number="form.validDays"
+                v-model.number="form.validityDays"
                 type="number"
                 min="1"
-                class="w-24 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 text-center"
+                :disabled="isDisabled"
+                class="w-24 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 text-center disabled:bg-neutral-100 disabled:text-neutral-500 disabled:cursor-not-allowed"
                 placeholder="30"
               >
               <span class="text-sm text-neutral-600">일간 사용 가능</span>
@@ -493,33 +606,24 @@ onMounted(async () => {
               <div>
                 <label class="block text-xs text-neutral-500 mb-1">시작일시</label>
                 <input
-                  v-model="form.validStartAt"
+                  v-model="form.validFrom"
                   type="datetime-local"
-                  class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  :disabled="isDisabled"
+                  class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-neutral-100 disabled:text-neutral-500 disabled:cursor-not-allowed"
                 >
               </div>
               <div>
                 <label class="block text-xs text-neutral-500 mb-1">종료일시</label>
                 <input
-                  v-model="form.validEndAt"
+                  v-model="form.validTo"
                   type="datetime-local"
-                  class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  :disabled="isDisabled"
+                  class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-neutral-100 disabled:text-neutral-500 disabled:cursor-not-allowed"
                 >
               </div>
             </div>
           </div>
         </div>
-      </UiCard>
-
-      <!-- 유의사항 -->
-      <UiCard title="유의사항">
-        <textarea
-          v-model="form.notes"
-          rows="5"
-          class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
-          placeholder="쿠폰 유의사항을 입력하세요."
-        />
-        <p class="text-xs text-neutral-400 mt-1">쿠폰 타입 변경 시 기본 유의사항으로 초기화됩니다.</p>
       </UiCard>
 
       <!-- 안내 -->
@@ -535,4 +639,12 @@ onMounted(async () => {
       </div>
     </div>
   </LayoutFormPage>
+
+  <!-- 상태 변경 모달 -->
+  <DomainCouponStatusModal
+    v-model="showStatusModal"
+    :coupon-name="form.name"
+    :target-status="targetStatus"
+    @confirm="handleStatusChange"
+  />
 </template>

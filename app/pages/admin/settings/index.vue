@@ -35,6 +35,7 @@ const info = ref({
   nameEn: '',
   logoUrl: '',
   faviconUrl: '',
+  theme: 'BLUE',
   businessName: '',
   businessNumber: '',
   businessType: 'INDIVIDUAL',
@@ -55,6 +56,14 @@ const info = ref({
   copyrightText: '',
   isActive: true,
 })
+
+// 테마 컬러 옵션
+const themeColorOptions = [
+  { value: 'BLUE', color: '#3F51B5', label: '블루' },
+  { value: 'GREEN', color: '#0c6f23', label: '그린' },
+  { value: 'BROWN', color: '#795548', label: '브라운' },
+  { value: 'BLACK', color: '#212121', label: '블랙' },
+]
 
 // 정산 정보
 const settlement = ref({
@@ -222,6 +231,7 @@ const handleSave = async () => {
       info: {
         name: info.value.name,
         nameEn: info.value.nameEn,
+        theme: info.value.theme,
         businessName: info.value.businessName,
         businessNumber: info.value.businessNumber,
         businessType: info.value.businessType,
@@ -438,6 +448,51 @@ onMounted(() => {
                 <p class="text-xs text-neutral-500 mt-2">권장: 32x32px, ICO/PNG</p>
               </div>
             </div>
+          </div>
+        </UiCard>
+
+        <!-- 테마 설정 -->
+        <UiCard>
+          <template #header>
+            <h3 class="font-semibold text-neutral-900">테마 설정</h3>
+            <p class="text-sm text-neutral-500 mt-1">쇼핑몰의 메인 컬러를 선택합니다.</p>
+          </template>
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-3">
+              테마 컬러
+            </label>
+            <div class="flex items-center gap-4">
+              <button
+                v-for="opt in themeColorOptions"
+                :key="opt.value"
+                type="button"
+                class="group flex flex-col items-center gap-2"
+                @click="info.theme = opt.value"
+              >
+                <div
+                  :class="[
+                    'w-12 h-12 rounded-full transition-all',
+                    info.theme === opt.value
+                      ? 'ring-4 ring-offset-2 ring-primary-500 scale-110'
+                      : 'hover:scale-105',
+                  ]"
+                  :style="{ backgroundColor: opt.color }"
+                />
+                <span
+                  :class="[
+                    'text-xs',
+                    info.theme === opt.value
+                      ? 'text-primary-600 font-medium'
+                      : 'text-neutral-500',
+                  ]"
+                >
+                  {{ opt.label }}
+                </span>
+              </button>
+            </div>
+            <p class="text-xs text-neutral-400 mt-3">
+              선택된 컬러: {{ themeColorOptions.find(o => o.value === info.theme)?.color }}
+            </p>
           </div>
         </UiCard>
 

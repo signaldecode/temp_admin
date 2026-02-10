@@ -6,16 +6,14 @@
 import { useApi } from '~/composables/useApi'
 
 export function useCoupon() {
-  const { get, post, put, del } = useApi()
+  const { get, post, put, patch, del } = useApi()
 
   /**
    * 쿠폰 타입 옵션
    */
   const couponTypeOptions = [
-    { value: 'PRODUCT', label: '상품 할인' },
+    { value: 'PRODUCT_DISCOUNT', label: '상품 할인' },
     { value: 'SHIPPING', label: '무료배송' },
-    // { value: 'RETURN', label: '무료반품' },
-    // { value: 'EXCHANGE', label: '무료교환' },
   ]
 
   /**
@@ -23,7 +21,7 @@ export function useCoupon() {
    */
   const issuanceStatusOptions = [
     { value: 'REGISTERED', label: '등록', color: 'neutral' },
-    { value: 'ISSUING', label: '발급중', color: 'success' },
+    { value: 'ACTIVE', label: '발급중', color: 'success' },
     { value: 'STOPPED', label: '발급중지', color: 'warning' },
     { value: 'ENDED', label: '종료', color: 'error' },
   ]
@@ -40,7 +38,7 @@ export function useCoupon() {
    * 쿠폰 타입별 기본 유의사항
    */
   const defaultNotesByCouponType = {
-    PRODUCT: [
+    PRODUCT_DISCOUNT: [
       '본 쿠폰은 일부 상품에 적용되지 않을 수 있습니다.',
       '다른 쿠폰과 중복 사용이 불가할 수 있습니다.',
       '유효기간 내 미사용 시 자동 소멸됩니다.',
@@ -48,16 +46,6 @@ export function useCoupon() {
     SHIPPING: [
       '배송비 쿠폰은 기본 배송비에만 적용됩니다.',
       '도서산간 지역 추가 배송비는 별도 부담됩니다.',
-      '유효기간 내 미사용 시 자동 소멸됩니다.',
-    ],
-    RETURN: [
-      '반품 배송비 쿠폰은 고객 변심 반품 시에만 사용 가능합니다.',
-      '상품 불량 및 오배송의 경우 본 쿠폰 사용과 관계없이 무료 반품됩니다.',
-      '유효기간 내 미사용 시 자동 소멸됩니다.',
-    ],
-    EXCHANGE: [
-      '교환 배송비 쿠폰은 고객 변심 교환 시에만 사용 가능합니다.',
-      '상품 불량 및 오배송의 경우 본 쿠폰 사용과 관계없이 무료 교환됩니다.',
       '유효기간 내 미사용 시 자동 소멸됩니다.',
     ],
   }
@@ -125,10 +113,10 @@ export function useCoupon() {
   /**
    * 쿠폰 발급 상태 변경
    * @param {number} id - 쿠폰 ID
-   * @param {string} status - 변경할 상태
+   * @param {string} status - 변경할 상태 (ACTIVE, STOPPED, ENDED)
    */
   const updateCouponStatus = async (id, status) => {
-    const response = await put(`/admin/coupons/${id}/status`, { status })
+    const response = await patch(`/admin/coupons/${id}/status`, { status })
     return response.data
   }
 
@@ -139,7 +127,7 @@ export function useCoupon() {
    */
   const getEditableFields = (status) => {
     // 발급중: 쿠폰명, 설명만 수정 가능
-    if (status === 'ISSUING') {
+    if (status === 'ACTIVE') {
       return {
         allEditable: false,
         editableFields: ['name', 'description'],
