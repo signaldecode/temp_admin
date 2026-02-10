@@ -86,39 +86,39 @@ const monthOptions = generateMonthOptions()
 // 월별 혜택 히스토리 데이터 (더미)
 const benefitHistory = {
   '2026-02': {
-    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs', 'early_access', 'free_return'],
-    VIP: ['free_shipping', 'vip_coupon', 'birthday_benefit'],
-    '일반': [],
+    VVIP: { minAmount: 5000000, benefits: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs', 'early_access', 'free_return'] },
+    VIP: { minAmount: 1000000, benefits: ['free_shipping', 'vip_coupon', 'birthday_benefit'] },
+    '일반': { minAmount: 0, benefits: [] },
   },
   '2026-01': {
-    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs', 'early_access'],
-    VIP: ['free_shipping', 'vip_coupon'],
-    '일반': [],
+    VVIP: { minAmount: 5000000, benefits: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs', 'early_access'] },
+    VIP: { minAmount: 1000000, benefits: ['free_shipping', 'vip_coupon'] },
+    '일반': { minAmount: 0, benefits: [] },
   },
   '2025-12': {
-    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs'],
-    VIP: ['free_shipping', 'vip_coupon'],
-    '일반': [],
+    VVIP: { minAmount: 4000000, benefits: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs'] },
+    VIP: { minAmount: 800000, benefits: ['free_shipping', 'vip_coupon'] },
+    '일반': { minAmount: 0, benefits: [] },
   },
   '2025-11': {
-    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit'],
-    VIP: ['free_shipping'],
-    '일반': [],
+    VVIP: { minAmount: 4000000, benefits: ['free_shipping', 'vip_coupon', 'birthday_benefit'] },
+    VIP: { minAmount: 800000, benefits: ['free_shipping'] },
+    '일반': { minAmount: 0, benefits: [] },
   },
   '2025-10': {
-    VVIP: ['free_shipping', 'vip_coupon'],
-    VIP: ['free_shipping'],
-    '일반': [],
+    VVIP: { minAmount: 3000000, benefits: ['free_shipping', 'vip_coupon'] },
+    VIP: { minAmount: 500000, benefits: ['free_shipping'] },
+    '일반': { minAmount: 0, benefits: [] },
   },
   '2025-09': {
-    VVIP: ['free_shipping'],
-    VIP: [],
-    '일반': [],
+    VVIP: { minAmount: 3000000, benefits: ['free_shipping'] },
+    VIP: { minAmount: 500000, benefits: [] },
+    '일반': { minAmount: 0, benefits: [] },
   },
   '2025-08': {
-    VVIP: ['free_shipping'],
-    VIP: [],
-    '일반': [],
+    VVIP: { minAmount: 3000000, benefits: ['free_shipping'] },
+    VIP: { minAmount: 500000, benefits: [] },
+    '일반': { minAmount: 0, benefits: [] },
   },
 }
 
@@ -463,23 +463,38 @@ const viewMembers = (gradeName) => {
             </UiBadge>
           </div>
 
-          <!-- 혜택 목록 -->
-          <div class="p-4">
-            <div v-if="selectedMonthBenefits[grade.name]?.length > 0">
-              <ul class="text-sm text-neutral-600 space-y-1">
-                <li
-                  v-for="benefitId in selectedMonthBenefits[grade.name]"
-                  :key="benefitId"
-                  class="flex items-center gap-2"
-                >
-                  <svg class="w-4 h-4 text-success-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  {{ getBenefitLabel(benefitId) }}
-                </li>
-              </ul>
+          <!-- 내용 -->
+          <div class="p-4 space-y-3">
+            <!-- 승급 조건 -->
+            <div>
+              <p class="text-xs text-neutral-500 mb-1">승급 조건</p>
+              <p class="text-sm text-neutral-900">
+                <span v-if="selectedMonthBenefits[grade.name]?.minAmount > 0">
+                  누적 구매금액 <span class="font-semibold">{{ formatCurrency(selectedMonthBenefits[grade.name].minAmount) }}</span> 이상
+                </span>
+                <span v-else class="text-neutral-500">기본 등급</span>
+              </p>
             </div>
-            <p v-else class="text-sm text-neutral-400">해당 월에 적용된 혜택이 없습니다.</p>
+
+            <!-- 혜택 목록 -->
+            <div>
+              <p class="text-xs text-neutral-500 mb-1">혜택</p>
+              <div v-if="selectedMonthBenefits[grade.name]?.benefits?.length > 0">
+                <ul class="text-sm text-neutral-600 space-y-1">
+                  <li
+                    v-for="benefitId in selectedMonthBenefits[grade.name].benefits"
+                    :key="benefitId"
+                    class="flex items-center gap-2"
+                  >
+                    <svg class="w-4 h-4 text-success-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    {{ getBenefitLabel(benefitId) }}
+                  </li>
+                </ul>
+              </div>
+              <p v-else class="text-sm text-neutral-400">추가 혜택 없음</p>
+            </div>
           </div>
         </div>
       </div>
