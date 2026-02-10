@@ -2,31 +2,15 @@
 /**
  * 회원 등급 관리 페이지
  * - 등급 목록 및 설정
- * - 등급별 조건/혜택 관리
- * - 월별 혜택 히스토리
+ * - 등급별 조건/혜택(쿠폰) 관리
  */
 
 import { useUiStore } from '~/stores/ui'
 import { formatCurrency } from '~/utils/formatters'
 
+const { $api } = useNuxtApp()
 const uiStore = useUiStore()
-
-// 혜택 옵션 목록 (실제 기능과 연결될 ID 기반)
-const benefitOptions = [
-  { id: 'free_shipping', label: '무료 배송', description: '전 상품 무료 배송' },
-  { id: 'vip_coupon', label: 'VIP 전용 쿠폰', description: '매월 VIP 전용 할인 쿠폰 지급' },
-  { id: 'birthday_benefit', label: '생일 특별 혜택', description: '생일 달 추가 할인 및 쿠폰' },
-  { id: 'priority_cs', label: '전용 고객센터', description: '우선 상담 및 전담 매니저' },
-  { id: 'early_access', label: '신상품 선공개', description: '신상품 출시 전 우선 구매' },
-  { id: 'free_return', label: '무료 반품', description: '30일 내 무료 반품' },
-  { id: 'double_point', label: '포인트 2배 적립', description: '특정 기간 포인트 2배' },
-  { id: 'exclusive_sale', label: '전용 세일 참여', description: '등급 전용 특별 세일' },
-]
-
-// 혜택 ID로 라벨 가져오기
-const getBenefitLabel = (id) => {
-  return benefitOptions.find((b) => b.id === id)?.label || id
-}
+const router = useRouter()
 
 // 현재 날짜 기준 다음달 계산
 const getNextMonth = () => {
@@ -36,122 +20,79 @@ const getNextMonth = () => {
   return `${year}년 ${month}월`
 }
 
-// 등급 목록 (다음 달 적용될 설정)
-const grades = ref([
-  {
-    id: 1,
-    name: 'VVIP',
-    color: 'error',
-    minAmount: 5000000,
-    benefits: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs', 'early_access', 'free_return'],
-    memberCount: 12,
-  },
-  {
-    id: 2,
-    name: 'VIP',
-    color: 'warning',
-    minAmount: 1000000,
-    benefits: ['free_shipping', 'vip_coupon', 'birthday_benefit'],
-    memberCount: 45,
-  },
-  {
-    id: 3,
-    name: '일반',
-    color: 'neutral',
-    minAmount: 0,
-    benefits: [],
-    memberCount: 238,
-  },
-])
+// 등급 레벨 → 색상 매핑 (높은 레벨 = 상위 등급)
+const getGradeColor = (level, totalLevels) => {
+  if (totalLevels <= 1) return 'neutral'
+  if (level === totalLevels) return 'error'     // 최상위
+  if (level >= totalLevels - 1) return 'warning' // 중상위
+  return 'neutral'                               // 하위
+}
 
-// 월별 혜택 히스토리 (더미 데이터)
-const generateMonthOptions = () => {
-  const options = []
-  const now = new Date()
+// ── 데이터 ──
+const isLoading = ref(false)
+const grades = ref([])
+const coupons = ref([]) // 전체 쿠폰 목록 (등급 수정 시 쿠폰 선택용)
 
-  for (let i = 0; i <= 6; i++) {
-    const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const year = date.getFullYear()
-    const month = date.getMonth() + 1
-    options.push({
-      value: `${year}-${String(month).padStart(2, '0')}`,
-      label: i === 0 ? `${year}년 ${month}월 (현재)` : `${year}년 ${month}월`,
+// 쿠폰 ID → 이름 조회
+const getCouponName = (couponId) => {
+  return coupons.value.find((c) => c.id === couponId)?.name || `쿠폰 #${couponId}`
+}
+
+// 쿠폰 ID → 설명 조회
+const getCouponDescription = (couponId) => {
+  return coupons.value.find((c) => c.id === couponId)?.description || ''
+}
+
+// ── API 조회 ──
+const fetchGrades = async () => {
+  isLoading.value = true
+  try {
+    const response = await $api.get('/admin/users/grades')
+    const data = response.data || response
+
+    // 전체 쿠폰 목록
+    coupons.value = data.coupons || []
+
+    // 등급 목록 매핑 (level 내림차순 정렬: 상위 등급이 먼저)
+    const gradeList = (data.grades || [])
+      .sort((a, b) => b.level - a.level)
+
+    const totalLevels = gradeList.length > 0
+      ? Math.max(...gradeList.map((g) => g.level))
+      : 1
+
+    grades.value = gradeList.map((g) => ({
+      id: g.grade_id,
+      name: g.name,
+      level: g.level,
+      color: getGradeColor(g.level, totalLevels),
+      minAmount: g.min_amount,
+      isDefault: g.is_default,
+      memberCount: g.member_count,
+      couponIds: g.coupon_ids || [],
+      hasPendingChanges: g.has_pending_changes,
+      pendingSnapshot: g.pending_snapshot,
+    }))
+  } catch (err) {
+    console.error('Grades fetch error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '등급 정보를 불러오는데 실패했습니다.',
     })
+  } finally {
+    isLoading.value = false
   }
-  return options
 }
 
-const monthOptions = generateMonthOptions()
-
-// 월별 혜택 히스토리 데이터 (더미)
-const benefitHistory = {
-  '2026-02': {
-    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs', 'early_access', 'free_return'],
-    VIP: ['free_shipping', 'vip_coupon', 'birthday_benefit'],
-    '일반': [],
-  },
-  '2026-01': {
-    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs', 'early_access'],
-    VIP: ['free_shipping', 'vip_coupon'],
-    '일반': [],
-  },
-  '2025-12': {
-    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs'],
-    VIP: ['free_shipping', 'vip_coupon'],
-    '일반': [],
-  },
-  '2025-11': {
-    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit'],
-    VIP: ['free_shipping'],
-    '일반': [],
-  },
-  '2025-10': {
-    VVIP: ['free_shipping', 'vip_coupon'],
-    VIP: ['free_shipping'],
-    '일반': [],
-  },
-  '2025-09': {
-    VVIP: ['free_shipping'],
-    VIP: [],
-    '일반': [],
-  },
-  '2025-08': {
-    VVIP: ['free_shipping'],
-    VIP: [],
-    '일반': [],
-  },
-}
-
-// 등급 색상 매핑
-const colorVariant = {
-  error: 'error',
-  warning: 'warning',
-  neutral: 'neutral',
-}
-
-// 등급 편집 모달
+// ── 등급 편집 모달 ──
 const showEditModal = ref(false)
 const editingGrade = ref(null)
+const isSaving = ref(false)
 const editForm = ref({
   name: '',
   minAmount: 0,
-  benefits: [],
+  couponIds: [],
 })
-
-// 혜택 히스토리 모달
-const showHistoryModal = ref(false)
-const selectedMonth = ref(monthOptions[0].value)
-
-// 선택된 월의 혜택 데이터
-const selectedMonthBenefits = computed(() => {
-  return benefitHistory[selectedMonth.value] || {}
-})
-
-// 히스토리 모달 열기
-const openHistoryModal = () => {
-  selectedMonth.value = monthOptions[0].value
-  showHistoryModal.value = true
-}
 
 // 등급 편집 열기
 const openEditModal = (grade) => {
@@ -159,54 +100,66 @@ const openEditModal = (grade) => {
   editForm.value = {
     name: grade.name,
     minAmount: grade.minAmount,
-    benefits: [...grade.benefits],
+    couponIds: [...grade.couponIds],
   }
   showEditModal.value = true
 }
 
-// 혜택 토글
-const toggleBenefit = (benefitId) => {
-  const index = editForm.value.benefits.indexOf(benefitId)
+// 쿠폰 토글
+const toggleCoupon = (couponId) => {
+  const index = editForm.value.couponIds.indexOf(couponId)
   if (index > -1) {
-    editForm.value.benefits.splice(index, 1)
+    editForm.value.couponIds.splice(index, 1)
   } else {
-    editForm.value.benefits.push(benefitId)
+    editForm.value.couponIds.push(couponId)
   }
 }
 
-// 혜택 선택 여부
-const isBenefitSelected = (benefitId) => {
-  return editForm.value.benefits.includes(benefitId)
+// 쿠폰 선택 여부
+const isCouponSelected = (couponId) => {
+  return editForm.value.couponIds.includes(couponId)
 }
 
 // 등급 저장
-const saveGrade = () => {
+const saveGrade = async () => {
   if (!editingGrade.value) return
 
-  const index = grades.value.findIndex((g) => g.id === editingGrade.value.id)
-  if (index > -1) {
-    grades.value[index] = {
-      ...grades.value[index],
+  isSaving.value = true
+  try {
+    await $api.patch(`/admin/users/grades/${editingGrade.value.id}`, {
       name: editForm.value.name,
-      minAmount: Number(editForm.value.minAmount),
-      benefits: [...editForm.value.benefits],
-    }
+      min_amount: Number(editForm.value.minAmount),
+      coupon_ids: editForm.value.couponIds,
+    })
+
+    showEditModal.value = false
+    editingGrade.value = null
+
+    uiStore.showToast({
+      type: 'success',
+      message: `등급 설정이 저장되었습니다. ${getNextMonth()}부터 적용됩니다.`,
+    })
+
+    await fetchGrades()
+  } catch (err) {
+    console.error('Grade save error:', err)
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '등급 저장에 실패했습니다.',
+    })
+  } finally {
+    isSaving.value = false
   }
-
-  showEditModal.value = false
-  editingGrade.value = null
-
-  uiStore.showToast({
-    type: 'success',
-    message: `등급 설정이 저장되었습니다. ${getNextMonth()}부터 적용됩니다.`,
-  })
 }
 
 // 등급별 회원 보기
-const router = useRouter()
 const viewMembers = (gradeName) => {
   router.push(`/admin/users?grade=${gradeName}`)
 }
+
+onMounted(() => {
+  fetchGrades()
+})
 </script>
 
 <template>
@@ -219,12 +172,6 @@ const viewMembers = (gradeName) => {
           회원 등급별 조건과 혜택을 관리합니다.
         </p>
       </div>
-      <UiButton variant="outline" @click="openHistoryModal">
-        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        혜택 히스토리
-      </UiButton>
     </div>
 
     <!-- 다음 달 적용 안내 -->
@@ -239,8 +186,13 @@ const viewMembers = (gradeName) => {
       </div>
     </div>
 
+    <!-- Loading -->
+    <div v-if="isLoading" class="flex items-center justify-center py-20">
+      <UiSpinner size="lg" />
+    </div>
+
     <!-- Grade Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       <UiCard
         v-for="grade in grades"
         :key="grade.id"
@@ -257,10 +209,12 @@ const viewMembers = (gradeName) => {
         >
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <UiBadge :variant="colorVariant[grade.color]" size="sm">
+              <UiBadge :variant="grade.color" size="sm">
                 {{ grade.name }}
               </UiBadge>
               <span class="text-sm text-neutral-500">{{ grade.memberCount }}명</span>
+              <UiBadge v-if="grade.isDefault" variant="neutral" size="sm">기본</UiBadge>
+              <UiBadge v-if="grade.hasPendingChanges" variant="warning" size="sm">변경 대기</UiBadge>
             </div>
             <button
               type="button"
@@ -287,24 +241,24 @@ const viewMembers = (gradeName) => {
             </p>
           </div>
 
-          <!-- 혜택 -->
+          <!-- 적용 쿠폰 -->
           <div>
-            <h4 class="text-xs font-medium text-neutral-500 uppercase mb-2">혜택</h4>
-            <div v-if="grade.benefits.length > 0">
+            <h4 class="text-xs font-medium text-neutral-500 uppercase mb-2">적용 쿠폰</h4>
+            <div v-if="grade.couponIds.length > 0">
               <ul class="text-sm text-neutral-600 space-y-1">
                 <li
-                  v-for="benefitId in grade.benefits"
-                  :key="benefitId"
+                  v-for="couponId in grade.couponIds"
+                  :key="couponId"
                   class="flex items-center gap-1"
                 >
                   <svg class="w-3 h-3 text-success-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
-                  {{ getBenefitLabel(benefitId) }}
+                  {{ getCouponName(couponId) }}
                 </li>
               </ul>
             </div>
-            <p v-else class="text-sm text-neutral-400">추가 혜택 없음</p>
+            <p v-else class="text-sm text-neutral-400">적용된 쿠폰 없음</p>
           </div>
         </div>
 
@@ -378,30 +332,31 @@ const viewMembers = (gradeName) => {
           </div>
         </div>
 
-        <!-- 추가 혜택 -->
+        <!-- 적용 쿠폰 -->
         <div>
           <label class="block text-sm font-medium text-neutral-700 mb-2">
-            추가 혜택
+            적용 쿠폰
           </label>
-          <div class="space-y-2 max-h-64 overflow-y-auto">
+          <div v-if="coupons.length > 0" class="space-y-2 max-h-64 overflow-y-auto">
             <label
-              v-for="benefit in benefitOptions"
-              :key="benefit.id"
+              v-for="coupon in coupons"
+              :key="coupon.id"
               class="flex items-start gap-3 p-3 border border-neutral-200 rounded-lg cursor-pointer hover:bg-neutral-50 transition-colors"
-              :class="{ 'border-primary-300 bg-primary-50': isBenefitSelected(benefit.id) }"
+              :class="{ 'border-primary-300 bg-primary-50': isCouponSelected(coupon.id) }"
             >
               <input
                 type="checkbox"
-                :checked="isBenefitSelected(benefit.id)"
+                :checked="isCouponSelected(coupon.id)"
                 class="mt-0.5 w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
-                @change="toggleBenefit(benefit.id)"
+                @change="toggleCoupon(coupon.id)"
               >
               <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-neutral-900">{{ benefit.label }}</p>
-                <p class="text-xs text-neutral-500 mt-0.5">{{ benefit.description }}</p>
+                <p class="text-sm font-medium text-neutral-900">{{ coupon.name }}</p>
+                <p v-if="coupon.description" class="text-xs text-neutral-500 mt-0.5">{{ coupon.description }}</p>
               </div>
             </label>
           </div>
+          <p v-else class="text-sm text-neutral-400">등록된 쿠폰이 없습니다.</p>
         </div>
       </div>
 
@@ -409,88 +364,17 @@ const viewMembers = (gradeName) => {
         <div class="flex justify-end gap-2">
           <UiButton
             variant="outline"
+            :disabled="isSaving"
             @click="showEditModal = false"
           >
             취소
           </UiButton>
           <UiButton
             variant="primary"
+            :loading="isSaving"
             @click="saveGrade"
           >
             저장
-          </UiButton>
-        </div>
-      </template>
-    </UiModal>
-
-    <!-- History Modal -->
-    <UiModal
-      v-model="showHistoryModal"
-      title="등급별 혜택 히스토리"
-      size="lg"
-    >
-      <!-- 월 선택 -->
-      <div class="mb-6">
-        <label class="block text-sm font-medium text-neutral-700 mb-2">조회 월</label>
-        <select
-          v-model="selectedMonth"
-          class="w-full sm:w-48 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-        >
-          <option v-for="opt in monthOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
-      </div>
-
-      <!-- 등급별 혜택 -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div
-          v-for="grade in grades"
-          :key="grade.id"
-          class="border border-neutral-200 rounded-lg overflow-hidden"
-        >
-          <!-- 등급 헤더 -->
-          <div
-            :class="[
-              'px-4 py-3 border-b',
-              grade.color === 'error' ? 'bg-error-50 border-error-100' : '',
-              grade.color === 'warning' ? 'bg-warning-50 border-warning-100' : '',
-              grade.color === 'neutral' ? 'bg-neutral-50 border-neutral-100' : '',
-            ]"
-          >
-            <UiBadge :variant="colorVariant[grade.color]" size="sm">
-              {{ grade.name }}
-            </UiBadge>
-          </div>
-
-          <!-- 혜택 목록 -->
-          <div class="p-4">
-            <div v-if="selectedMonthBenefits[grade.name]?.length > 0">
-              <ul class="text-sm text-neutral-600 space-y-1">
-                <li
-                  v-for="benefitId in selectedMonthBenefits[grade.name]"
-                  :key="benefitId"
-                  class="flex items-center gap-2"
-                >
-                  <svg class="w-4 h-4 text-success-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  {{ getBenefitLabel(benefitId) }}
-                </li>
-              </ul>
-            </div>
-            <p v-else class="text-sm text-neutral-400">해당 월에 적용된 혜택이 없습니다.</p>
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="flex justify-end">
-          <UiButton
-            variant="outline"
-            @click="showHistoryModal = false"
-          >
-            닫기
           </UiButton>
         </div>
       </template>
