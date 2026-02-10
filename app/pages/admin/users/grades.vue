@@ -3,6 +3,7 @@
  * 회원 등급 관리 페이지
  * - 등급 목록 및 설정
  * - 등급별 조건/혜택 관리
+ * - 월별 혜택 히스토리
  */
 
 import { useUiStore } from '~/stores/ui'
@@ -27,7 +28,15 @@ const getBenefitLabel = (id) => {
   return benefitOptions.find((b) => b.id === id)?.label || id
 }
 
-// 등급 목록
+// 현재 날짜 기준 다음달 계산
+const getNextMonth = () => {
+  const now = new Date()
+  const year = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear()
+  const month = now.getMonth() === 11 ? 1 : now.getMonth() + 2
+  return `${year}년 ${month}월`
+}
+
+// 등급 목록 (다음 달 적용될 설정)
 const grades = ref([
   {
     id: 1,
@@ -55,6 +64,64 @@ const grades = ref([
   },
 ])
 
+// 월별 혜택 히스토리 (더미 데이터)
+const generateMonthOptions = () => {
+  const options = []
+  const now = new Date()
+
+  for (let i = 0; i <= 6; i++) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const year = date.getFullYear()
+    const month = date.getMonth() + 1
+    options.push({
+      value: `${year}-${String(month).padStart(2, '0')}`,
+      label: i === 0 ? `${year}년 ${month}월 (현재)` : `${year}년 ${month}월`,
+    })
+  }
+  return options
+}
+
+const monthOptions = generateMonthOptions()
+
+// 월별 혜택 히스토리 데이터 (더미)
+const benefitHistory = {
+  '2026-02': {
+    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs', 'early_access', 'free_return'],
+    VIP: ['free_shipping', 'vip_coupon', 'birthday_benefit'],
+    '일반': [],
+  },
+  '2026-01': {
+    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs', 'early_access'],
+    VIP: ['free_shipping', 'vip_coupon'],
+    '일반': [],
+  },
+  '2025-12': {
+    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit', 'priority_cs'],
+    VIP: ['free_shipping', 'vip_coupon'],
+    '일반': [],
+  },
+  '2025-11': {
+    VVIP: ['free_shipping', 'vip_coupon', 'birthday_benefit'],
+    VIP: ['free_shipping'],
+    '일반': [],
+  },
+  '2025-10': {
+    VVIP: ['free_shipping', 'vip_coupon'],
+    VIP: ['free_shipping'],
+    '일반': [],
+  },
+  '2025-09': {
+    VVIP: ['free_shipping'],
+    VIP: [],
+    '일반': [],
+  },
+  '2025-08': {
+    VVIP: ['free_shipping'],
+    VIP: [],
+    '일반': [],
+  },
+}
+
 // 등급 색상 매핑
 const colorVariant = {
   error: 'error',
@@ -70,6 +137,21 @@ const editForm = ref({
   minAmount: 0,
   benefits: [],
 })
+
+// 혜택 히스토리 모달
+const showHistoryModal = ref(false)
+const selectedMonth = ref(monthOptions[0].value)
+
+// 선택된 월의 혜택 데이터
+const selectedMonthBenefits = computed(() => {
+  return benefitHistory[selectedMonth.value] || {}
+})
+
+// 히스토리 모달 열기
+const openHistoryModal = () => {
+  selectedMonth.value = monthOptions[0].value
+  showHistoryModal.value = true
+}
 
 // 등급 편집 열기
 const openEditModal = (grade) => {
@@ -116,14 +198,13 @@ const saveGrade = () => {
 
   uiStore.showToast({
     type: 'success',
-    message: '등급 설정이 저장되었습니다.',
+    message: `등급 설정이 저장되었습니다. ${getNextMonth()}부터 적용됩니다.`,
   })
 }
 
 // 등급별 회원 보기
 const router = useRouter()
 const viewMembers = (gradeName) => {
-  // 회원 목록 페이지로 이동하며 등급 필터 적용 (향후 구현)
   router.push(`/admin/users?grade=${gradeName}`)
 }
 </script>
@@ -131,11 +212,31 @@ const viewMembers = (gradeName) => {
 <template>
   <div>
     <!-- Page Header -->
-    <div class="mb-6">
-      <h1 class="text-2xl font-bold text-neutral-900">회원 등급</h1>
-      <p class="mt-1 text-neutral-600">
-        회원 등급별 조건과 혜택을 관리합니다.
-      </p>
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-neutral-900">회원 등급</h1>
+        <p class="mt-1 text-neutral-600">
+          회원 등급별 조건과 혜택을 관리합니다.
+        </p>
+      </div>
+      <UiButton variant="outline" @click="openHistoryModal">
+        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        혜택 히스토리
+      </UiButton>
+    </div>
+
+    <!-- 다음 달 적용 안내 -->
+    <div class="mb-4 p-3 bg-warning-50 border border-warning-200 rounded-lg">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-warning-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <p class="text-sm text-warning-700">
+          아래 설정은 <strong>{{ getNextMonth() }}</strong>부터 적용됩니다.
+        </p>
+      </div>
     </div>
 
     <!-- Grade Cards -->
@@ -242,6 +343,13 @@ const viewMembers = (gradeName) => {
       :title="`${editingGrade?.name || ''} 등급 설정`"
       size="md"
     >
+      <!-- 다음 달 적용 안내 -->
+      <div class="mb-4 p-3 bg-warning-50 border border-warning-200 rounded-lg">
+        <p class="text-sm text-warning-700">
+          변경사항은 <strong>{{ getNextMonth() }}</strong>부터 적용됩니다.
+        </p>
+      </div>
+
       <div class="space-y-4">
         <!-- 등급명 -->
         <div>
@@ -310,6 +418,79 @@ const viewMembers = (gradeName) => {
             @click="saveGrade"
           >
             저장
+          </UiButton>
+        </div>
+      </template>
+    </UiModal>
+
+    <!-- History Modal -->
+    <UiModal
+      v-model="showHistoryModal"
+      title="등급별 혜택 히스토리"
+      size="lg"
+    >
+      <!-- 월 선택 -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-neutral-700 mb-2">조회 월</label>
+        <select
+          v-model="selectedMonth"
+          class="w-full sm:w-48 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          <option v-for="opt in monthOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
+      </div>
+
+      <!-- 등급별 혜택 -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div
+          v-for="grade in grades"
+          :key="grade.id"
+          class="border border-neutral-200 rounded-lg overflow-hidden"
+        >
+          <!-- 등급 헤더 -->
+          <div
+            :class="[
+              'px-4 py-3 border-b',
+              grade.color === 'error' ? 'bg-error-50 border-error-100' : '',
+              grade.color === 'warning' ? 'bg-warning-50 border-warning-100' : '',
+              grade.color === 'neutral' ? 'bg-neutral-50 border-neutral-100' : '',
+            ]"
+          >
+            <UiBadge :variant="colorVariant[grade.color]" size="sm">
+              {{ grade.name }}
+            </UiBadge>
+          </div>
+
+          <!-- 혜택 목록 -->
+          <div class="p-4">
+            <div v-if="selectedMonthBenefits[grade.name]?.length > 0">
+              <ul class="text-sm text-neutral-600 space-y-1">
+                <li
+                  v-for="benefitId in selectedMonthBenefits[grade.name]"
+                  :key="benefitId"
+                  class="flex items-center gap-2"
+                >
+                  <svg class="w-4 h-4 text-success-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  {{ getBenefitLabel(benefitId) }}
+                </li>
+              </ul>
+            </div>
+            <p v-else class="text-sm text-neutral-400">해당 월에 적용된 혜택이 없습니다.</p>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end">
+          <UiButton
+            variant="outline"
+            @click="showHistoryModal = false"
+          >
+            닫기
           </UiButton>
         </div>
       </template>
