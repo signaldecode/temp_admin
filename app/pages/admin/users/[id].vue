@@ -57,7 +57,6 @@ const fetchUser = async () => {
     const response = await $api.get(`/admin/users/${userId.value}`)
     user.value = response.data
   } catch (err) {
-    console.error('User fetch error:', err)
     error.value = err.data?.error?.message || err.data?.message || err.message || '회원 정보를 불러오는데 실패했습니다.'
   } finally {
     isLoading.value = false
@@ -145,7 +144,6 @@ const handleAddMemo = async (memoData) => {
       message: '메모가 등록되었습니다.',
     })
   } catch (err) {
-    console.error('Memo add error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.message || '메모 등록에 실패했습니다.',
@@ -175,7 +173,6 @@ const handleEditMemo = async (memoData) => {
       message: '메모가 수정되었습니다.',
     })
   } catch (err) {
-    console.error('Memo edit error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.message || '메모 수정에 실패했습니다.',
@@ -198,7 +195,6 @@ const handleDeleteMemo = async (memoId) => {
       message: '메모가 삭제되었습니다.',
     })
   } catch (err) {
-    console.error('Memo delete error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.message || '메모 삭제에 실패했습니다.',

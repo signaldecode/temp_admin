@@ -42,9 +42,8 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
         return navigateTo('/login')
       }
     }
-  } catch (error) {
+  } catch {
     // 에러 발생 시 미인증 처리
-    console.error('Auth check failed:', error)
     if (to.path.startsWith('/admin')) {
       return navigateTo('/login')
     }

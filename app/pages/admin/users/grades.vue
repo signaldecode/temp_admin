@@ -74,7 +74,6 @@ const fetchGrades = async () => {
       pendingSnapshot: g.pending_snapshot,
     }))
   } catch (err) {
-    console.error('Grades fetch error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.message || '등급 정보를 불러오는데 실패했습니다.',
@@ -142,7 +141,6 @@ const saveGrade = async () => {
 
     await fetchGrades()
   } catch (err) {
-    console.error('Grade save error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.message || '등급 저장에 실패했습니다.',

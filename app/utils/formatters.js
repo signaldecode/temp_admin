@@ -50,8 +50,7 @@ export const formatDate = (dateString, format = 'long') => {
       default:
         return date.toLocaleString('ko-KR')
     }
-  } catch (error) {
-    console.error('Date formatting error:', error)
+  } catch {
     return '-'
   }
 }

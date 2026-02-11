@@ -70,9 +70,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
         return navigateTo('/login')
       }
     }
-  } catch (error) {
-    console.error('Auth check error:', error)
-
+  } catch {
     // 에러 발생 시 보호된 페이지는 로그인으로
     if (!isPublicPage) {
       return navigateTo('/login')

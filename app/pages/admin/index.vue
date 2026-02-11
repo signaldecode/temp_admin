@@ -112,7 +112,6 @@ const fetchDashboard = async () => {
       }))
     }
   } catch (err) {
-    console.error('Dashboard fetch error:', err)
     error.value = err.data?.error?.message || err.data?.message || err.message || '대시보드 데이터를 불러오는데 실패했습니다.'
   } finally {
     isLoading.value = false

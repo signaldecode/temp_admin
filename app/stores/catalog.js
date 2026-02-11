@@ -35,15 +35,8 @@ export const useCatalogStore = defineStore('catalog', () => {
       carriers.value = carriersRes.data || carriersRes
       grades.value = gradesRes.data || gradesRes
       isLoaded.value = true
-
-      console.log('[CatalogStore] 데이터 로드 완료:', {
-        categoriesCount: categories.value.length,
-        tagsCount: tags.value.length,
-        carriersCount: carriers.value.length,
-        gradesCount: grades.value.length,
-      })
     } catch (error) {
-      console.error('[CatalogStore] 데이터 로드 실패:', error)
+      // 데이터 로드 실패
     } finally {
       isLoading.value = false
     }
@@ -56,9 +49,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     try {
       const response = await $api.get('/admin/categories')
       categories.value = response.data || response
-      console.log('[CatalogStore] 카테고리 갱신 완료')
     } catch (error) {
-      console.error('[CatalogStore] 카테고리 갱신 실패:', error)
       throw error
     }
   }
@@ -70,9 +61,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     try {
       const response = await $api.get('/admin/tags')
       tags.value = response.data || response
-      console.log('[CatalogStore] 태그 갱신 완료')
     } catch (error) {
-      console.error('[CatalogStore] 태그 갱신 실패:', error)
       throw error
     }
   }
@@ -84,9 +73,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     try {
       const response = await $api.get('/admin/users/grades')
       grades.value = response.data || response
-      console.log('[CatalogStore] 회원 등급 갱신 완료')
     } catch (error) {
-      console.error('[CatalogStore] 회원 등급 갱신 실패:', error)
       throw error
     }
   }

@@ -210,7 +210,6 @@ const handleGradeChange = async () => {
     // 목록 새로고침
     await fetchUsers()
   } catch (err) {
-    console.error('Grade change error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.message || '등급 변경에 실패했습니다.',

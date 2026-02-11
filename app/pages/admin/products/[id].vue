@@ -762,8 +762,7 @@ const fetchProduct = async () => {
     originalMainImage.value = mainImage.value ? { ...mainImage.value } : null
 
     isLoading.value = false
-  } catch (error) {
-    console.error('상품 로드 실패:', error)
+  } catch {
     uiStore.showToast({ type: 'error', message: '상품을 불러오지 못했습니다.' })
     isLoading.value = false
   }

@@ -96,8 +96,7 @@ const fetchPolicies = async () => {
     if (data.returnPolicy) {
       returnPolicy.value = { ...returnPolicy.value, ...data.returnPolicy }
     }
-  } catch (error) {
-    console.error('정책 로드 실패:', error)
+  } catch {
     uiStore.showToast({ type: 'error', message: '정책을 불러오지 못했습니다.' })
   } finally {
     isLoading.value = false
@@ -130,7 +129,6 @@ const handleSave = async () => {
       message: '정책 설정이 저장되었습니다.',
     })
   } catch (error) {
-    console.error('정책 저장 실패:', error)
     uiStore.showToast({
       type: 'error',
       message: error.data?.message || '저장에 실패했습니다.',

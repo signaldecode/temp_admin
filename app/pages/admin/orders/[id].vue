@@ -162,7 +162,6 @@ const fetchOrder = async () => {
     const response = await $api.get(`/admin/orders/${orderId.value}`)
     order.value = response.data
   } catch (err) {
-    console.error('Order fetch error:', err)
     error.value = err.data?.error?.message || err.data?.message || err.message || '주문 정보를 불러오는데 실패했습니다.'
   } finally {
     isLoading.value = false
@@ -429,7 +428,6 @@ const createShipment = async () => {
     showShipmentModal.value = false
     await fetchOrder() // 주문 정보 새로고침
   } catch (err) {
-    console.error('Shipment creation error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.message || err.message || '발송 등록에 실패했습니다.',
@@ -503,7 +501,6 @@ const fetchClaims = async () => {
       selectedClaimId.value = route.query.claimId
     }
   } catch (err) {
-    console.error('Claims fetch error:', err)
     orderClaims.value = []
   } finally {
     isClaimLoading.value = false
@@ -828,7 +825,6 @@ const executeStatusChange = async () => {
       await fetchOrder()
     }
   } catch (err) {
-    console.error('Status change error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.error?.message || err.data?.message || err.message || '상태 변경에 실패했습니다.',
@@ -882,7 +878,6 @@ const refreshDelivery = async () => {
       })
     }
   } catch (err) {
-    console.error('Delivery refresh error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.error?.message || err.data?.message || err.message || '배송 정보 갱신에 실패했습니다.',
@@ -1181,7 +1176,6 @@ const executeClaimAction = async () => {
     uiStore.showToast({ type: 'success', message: '클레임 상태가 변경되었습니다.' })
     await Promise.all([fetchOrder(), fetchClaims()])
   } catch (err) {
-    console.error('Claim action error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.error?.message || err.data?.message || err.message || '클레임 처리에 실패했습니다.',
@@ -1270,7 +1264,6 @@ const executeCreateClaim = async () => {
     uiStore.showToast({ type: 'success', message: '클레임이 생성되었습니다.' })
     await Promise.all([fetchOrder(), fetchClaims()])
   } catch (err) {
-    console.error('Create claim error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.error?.message || err.data?.message || err.message || '클레임 생성에 실패했습니다.',

@@ -127,7 +127,6 @@ const fetchOrders = async () => {
     // 페이지 변경 시 선택 초기화
     selectedIds.value = []
   } catch (err) {
-    console.error('Orders fetch error:', err)
     error.value = err.data?.error?.message || err.data?.message || err.message || '주문 목록을 불러오는데 실패했습니다.'
   } finally {
     isLoading.value = false
@@ -218,7 +217,6 @@ const handleStatusChange = async () => {
     // 목록 새로고침
     fetchOrders()
   } catch (err) {
-    console.error('Status change error:', err)
     uiStore.showToast({
       type: 'error',
       message: err.data?.error?.message || err.data?.message || err.message || '상태 변경에 실패했습니다.',

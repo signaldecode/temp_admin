@@ -62,8 +62,6 @@ export const useAuthStore = defineStore('auth', {
         const { $api } = useNuxtApp()
         const loginResponse = await $api.post('/auth/login', credentials)
 
-        console.log('Login response:', loginResponse)
-
         // Safari 쿠키 설정 대기
         await new Promise(resolve => setTimeout(resolve, 100))
 
@@ -91,7 +89,6 @@ export const useAuthStore = defineStore('auth', {
         await $api.post('/auth/logout')
       } catch (error) {
         // 로그아웃 실패해도 클라이언트 상태는 초기화
-        console.error('Logout error:', error)
       } finally {
         this.reset()
         this.isLoading = false
@@ -111,10 +108,7 @@ export const useAuthStore = defineStore('auth', {
 
       try {
         const { $api } = useNuxtApp()
-        console.log('Fetching /auth/me...')
-        console.log('Document cookies:', document.cookie)
         const response = await $api.get('/auth/me')
-        console.log('Me response:', response)
 
         // API 응답: { success, data: MyInfoResponse, error, message }
         const userData = response.data

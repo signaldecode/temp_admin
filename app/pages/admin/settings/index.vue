@@ -178,8 +178,7 @@ const fetchSettings = async () => {
     if (data.security) {
       security.value = { ...security.value, ...data.security }
     }
-  } catch (error) {
-    console.error('설정 로드 실패:', error)
+  } catch {
     uiStore.showToast({ type: 'error', message: '설정을 불러오지 못했습니다.' })
   } finally {
     isLoading.value = false
@@ -282,7 +281,6 @@ const handleSave = async () => {
 
     uiStore.showToast({ type: 'success', message: '설정이 저장되었습니다.' })
   } catch (error) {
-    console.error('설정 저장 실패:', error)
     uiStore.showToast({
       type: 'error',
       message: error.data?.message || '저장에 실패했습니다.',
