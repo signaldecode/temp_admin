@@ -700,6 +700,7 @@ const showConfirmStep = ref(false) // 확인 단계 표시 여부
 const isCancelSelected = computed(() => selectedStatus.value === 'CANCELLED')
 const cancelReason = ref('')
 const cancelReasonType = ref('')
+const cancelRestoreStock = ref(true)
 
 // 취소 사유 유형 옵션
 const cancelReasonOptions = [
@@ -749,6 +750,7 @@ const openStatusModal = () => {
   statusReason.value = ''
   cancelReason.value = ''
   cancelReasonType.value = ''
+  cancelRestoreStock.value = true
   showConfirmStep.value = false // 확인 단계 초기화
 
   showStatusModal.value = true
@@ -791,6 +793,7 @@ const executeStatusChange = async () => {
         claimType: 'CANCEL',
         reasonType: cancelReasonType.value,
         reason: cancelReason.value,
+        restoreStock: cancelRestoreStock.value,
         claimItems: (order.value?.items || []).map((item) => ({
           orderItemId: item.orderItemId,
           quantity: item.quantity,
@@ -2018,6 +2021,17 @@ onMounted(async () => {
               placeholder="취소 사유를 입력하세요"
               class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
+          </div>
+          <div>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input
+                v-model="cancelRestoreStock"
+                type="checkbox"
+                class="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500"
+              >
+              <span class="text-sm text-neutral-700">재고 복구</span>
+            </label>
+            <p class="text-xs text-neutral-500 mt-1 ml-6">체크 해제 시 재고가 차감된 상태로 유지됩니다.</p>
           </div>
         </div>
 
