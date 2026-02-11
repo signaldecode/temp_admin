@@ -53,7 +53,6 @@ const fetchCoupons = async () => {
 
     coupons.value = response.content
     totalItems.value = response.totalElements
-    selectedIds.value = []
   } catch (error) {
     uiStore.showToast({
       type: 'error',
@@ -73,16 +72,6 @@ const tableColumns = [
   { key: 'status', label: '상태', width: 'w-24', align: 'center' },
   { key: 'actions', label: '발급 관리', width: 'w-28', align: 'center' },
 ]
-
-// 선택
-const selectedIds = ref([])
-const handleSelectAll = (selectAll) => {
-  selectedIds.value = selectAll ? coupons.value.map((c) => c.id) : []
-}
-const handleSelect = (id) => {
-  const idx = selectedIds.value.indexOf(id)
-  idx > -1 ? selectedIds.value.splice(idx, 1) : selectedIds.value.push(id)
-}
 
 // 헬퍼 함수
 const getStatusBadge = (status) => {
@@ -227,12 +216,8 @@ onMounted(() => {
       v-else
       :columns="tableColumns"
       :items="coupons"
-      :selected-ids="selectedIds"
-      selectable
       empty-title="등록된 쿠폰이 없습니다"
       empty-description="새 쿠폰을 등록해보세요."
-      @select="handleSelect"
-      @select-all="handleSelectAll"
       @row-click="goToDetail"
     >
       <template #cell-name="{ item }">

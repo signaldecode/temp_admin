@@ -6,7 +6,7 @@
 import { useApi } from '~/composables/useApi'
 
 export function useCoupon() {
-  const { get, post, put, patch, del } = useApi()
+  const { get, post, patch, del } = useApi()
 
   /**
    * 쿠폰 타입 옵션
@@ -92,12 +92,14 @@ export function useCoupon() {
   }
 
   /**
-   * 쿠폰 수정
+   * 쿠폰 수정 (PATCH)
+   * - 등록 상태: 모든 필드 수정 가능
+   * - 발급중지 상태: name, description만 수정 가능
    * @param {number} id - 쿠폰 ID
    * @param {Object} data - 쿠폰 데이터
    */
   const updateCoupon = async (id, data) => {
-    const response = await put(`/admin/coupons/${id}`, data)
+    const response = await patch(`/admin/coupons/${id}`, data)
     return response.data
   }
 
@@ -121,26 +123,35 @@ export function useCoupon() {
   }
 
   /**
+   * 미사용 쿠폰 회수 (RECALLED 처리)
+   * @param {number} id - 쿠폰 ID
+   */
+  const recallCoupon = async (id) => {
+    const response = await post(`/admin/coupons/${id}/recall`)
+    return response.data
+  }
+
+  /**
    * 발급 상태에 따른 수정 가능 필드 확인
    * @param {string} status - 발급 상태
    * @returns {Object} - { allEditable, editableFields }
    */
   const getEditableFields = (status) => {
-    // 발급중: 쿠폰명, 설명만 수정 가능
-    if (status === 'ACTIVE') {
-      return {
-        allEditable: false,
-        editableFields: ['name', 'description'],
-      }
-    }
-    // 발급중지 또는 등록: 전체 수정 가능
-    if (status === 'STOPPED' || status === 'REGISTERED') {
+    // 등록: 전체 수정 가능
+    if (status === 'REGISTERED') {
       return {
         allEditable: true,
         editableFields: null,
       }
     }
-    // 종료: 수정 불가
+    // 발급중지: 쿠폰명, 설명만 수정 가능
+    if (status === 'STOPPED') {
+      return {
+        allEditable: false,
+        editableFields: ['name', 'description'],
+      }
+    }
+    // 발급중, 종료: 수정 불가
     return {
       allEditable: false,
       editableFields: [],
@@ -172,6 +183,7 @@ export function useCoupon() {
     updateCoupon,
     deleteCoupon,
     updateCouponStatus,
+    recallCoupon,
     // Helpers
     getEditableFields,
     isFieldEditable,

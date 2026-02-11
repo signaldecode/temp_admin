@@ -44,7 +44,6 @@ const form = ref({
   applicableCategories: [],
   startedAt: '',
   endedAt: '',
-  hasEndDate: true,
 })
 
 // 전체 선택 여부
@@ -88,7 +87,6 @@ const fetchDiscount = async () => {
       applicableCategories: data.applicableCategories || [],
       startedAt: formatDateForInput(data.startedAt),
       endedAt: formatDateForInput(data.endedAt),
-      hasEndDate: !!data.endedAt,
     }
   } catch (error) {
     uiStore.showToast({
@@ -104,6 +102,13 @@ const fetchDiscount = async () => {
 // 할인값 실시간 제한
 const handleDiscountValueInput = () => {
   form.value.discountValue = clampDiscountValue(form.value.discountType, form.value.discountValue)
+}
+
+// 날짜 유효성 상태
+const dateValidation = ref({ valid: true, message: '' })
+
+const handleDateValidationChange = (validation) => {
+  dateValidation.value = validation
 }
 
 // 저장
@@ -124,6 +129,12 @@ const handleSave = async () => {
     return
   }
 
+  // 날짜 유효성 검증 (컴포넌트에서 전달받은 상태 사용)
+  if (!dateValidation.value.valid) {
+    uiStore.showToast({ type: 'error', message: dateValidation.value.message })
+    return
+  }
+
   isSaving.value = true
 
   try {
@@ -134,7 +145,7 @@ const handleSave = async () => {
       discountValue: Number(form.value.discountValue),
       applicableCategories: form.value.applicableCategories.length > 0 ? form.value.applicableCategories : [],
       startedAt: formatDateForApi(form.value.startedAt),
-      endedAt: form.value.hasEndDate ? formatDateForApi(form.value.endedAt) : null,
+      endedAt: form.value.endedAt ? formatDateForApi(form.value.endedAt) : null,
     }
 
     if (isEditMode.value) {
@@ -327,41 +338,14 @@ onMounted(async () => {
 
       <!-- 할인 기간 -->
       <UiCard title="할인 기간">
-        <div class="space-y-4">
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">
-                시작일시 <span class="text-error-500">*</span>
-              </label>
-              <input
-                v-model="form.startedAt"
-                type="datetime-local"
-                class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">종료일시</label>
-              <input
-                v-model="form.endedAt"
-                type="datetime-local"
-                :disabled="!form.hasEndDate"
-                :class="[
-                  'w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500',
-                  !form.hasEndDate ? 'bg-neutral-100 text-neutral-400' : '',
-                ]"
-              >
-            </div>
-          </div>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              :checked="!form.hasEndDate"
-              class="w-4 h-4 text-primary-600 rounded"
-              @change="form.hasEndDate = !$event.target.checked"
-            >
-            <span class="text-sm text-neutral-700">종료일 없음 (상시 할인)</span>
-          </label>
-        </div>
+        <UiDateRangePicker
+          v-model:start="form.startedAt"
+          v-model:end="form.endedAt"
+          start-required
+          show-no-end-date
+          no-end-date-label="종료일 없음 (상시 할인)"
+          @validation-change="handleDateValidationChange"
+        />
       </UiCard>
 
       <!-- 안내 -->

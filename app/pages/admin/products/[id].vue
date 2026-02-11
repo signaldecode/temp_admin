@@ -1431,6 +1431,18 @@ onMounted(() => {
               </p>
             </div>
           </div>
+
+          <!-- 재고 관리 안내 -->
+          <div class="p-4 bg-primary-50 border border-primary-200 rounded-lg">
+            <div class="flex gap-3">
+              <svg class="w-5 h-5 text-primary-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p class="text-sm text-primary-800">
+                원활한 구매 경험을 위해 주문 생성 시 재고가 즉시 차감됩니다. 관리자가 설정한 입금기한 내 미입금 시 자동 취소 및 재고 복원됩니다.
+              </p>
+            </div>
+          </div>
         </div>
       </UiCard>
     </div>

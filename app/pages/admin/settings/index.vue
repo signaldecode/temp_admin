@@ -85,7 +85,7 @@ const seo = ref({
   metaTitle: '',
   metaDescription: '',
   metaKeywords: '',
-  ogImage: '',
+  // ogImage: '',
   robotsTxt: '',
 })
 
@@ -130,7 +130,7 @@ const ogImageInputRef = ref(null)
 // 이미지 미리보기
 const logoPreview = computed(() => logoFile.value ? URL.createObjectURL(logoFile.value) : info.value.logoUrl)
 const faviconPreview = computed(() => faviconFile.value ? URL.createObjectURL(faviconFile.value) : info.value.faviconUrl)
-const ogImagePreview = computed(() => ogImageFile.value ? URL.createObjectURL(ogImageFile.value) : seo.value.ogImage)
+// const ogImagePreview = computed(() => ogImageFile.value ? URL.createObjectURL(ogImageFile.value) : seo.value.ogImage)
 
 // 이미지 업로드 핸들러
 const handleLogoUpload = (event) => {
@@ -143,10 +143,10 @@ const handleFaviconUpload = (event) => {
   if (file) faviconFile.value = file
 }
 
-const handleOgImageUpload = (event) => {
-  const file = event.target.files?.[0]
-  if (file) ogImageFile.value = file
-}
+// const handleOgImageUpload = (event) => {
+//   const file = event.target.files?.[0]
+//   if (file) ogImageFile.value = file
+// }
 
 // 설정 데이터 로드
 const fetchSettings = async () => {
@@ -269,16 +269,16 @@ const handleSave = async () => {
     if (faviconFile.value) {
       formData.append('favicon', faviconFile.value)
     }
-    if (ogImageFile.value) {
-      formData.append('ogImage', ogImageFile.value)
-    }
+    // if (ogImageFile.value) {
+    //   formData.append('ogImage', ogImageFile.value)
+    // }
 
     await $api.putFormData('/admin/tenant', formData)
 
     // 파일 상태 초기화
     logoFile.value = null
     faviconFile.value = null
-    ogImageFile.value = null
+    // ogImageFile.value = null
 
     uiStore.showToast({ type: 'success', message: '설정이 저장되었습니다.' })
   } catch (error) {
@@ -903,7 +903,7 @@ onMounted(() => {
           </div>
         </UiCard>
 
-        <UiCard>
+        <!-- <UiCard>
           <template #header>
             <h3 class="font-semibold text-neutral-900">OG(Open Graph) 이미지</h3>
           </template>
@@ -918,7 +918,7 @@ onMounted(() => {
               <p class="text-xs text-neutral-500 mt-2">권장: 1200x630px, JPG/PNG</p>
             </div>
           </div>
-        </UiCard>
+        </UiCard> -->
 
         <UiCard>
           <template #header>
