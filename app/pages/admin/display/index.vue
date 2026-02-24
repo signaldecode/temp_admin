@@ -49,6 +49,7 @@ const sections = ref([
     brandName: 'SignalDecode', // 고정 (수정 불가)
     subTitle: 'MD 추천 아이템', // 편집 가능
     bannerImage: '', // 좌측 배너 이미지
+    bannerLink: '', // 배너 클릭 시 새창으로 이동할 링크
   },
   {
     id: 'review',
@@ -82,11 +83,19 @@ const sections = ref([
     sortOrder: 7,
   },
   {
+    id: 'instagram',
+    name: '인스타그램',
+    type: 'INSTAGRAM',
+    isActive: false,
+    sortOrder: 8,
+    displayCount: 4,
+  },
+  {
     id: 'category',
     name: '카테고리별 상품',
     type: 'CATEGORY',
     isActive: false,
-    sortOrder: 8,
+    sortOrder: 9,
     displayCount: 4,
     title: 'Shop by Category',
     description: '카테고리별 인기 상품',
@@ -206,13 +215,14 @@ const getSampleProducts = (count) => {
 
 // 추천 섹션 이미지 업로드
 const recommendFileInputRef = ref(null)
-const isUploadingRecommend = ref(false)
+const currentRecommendSection = ref(null)
 
-const triggerRecommendFileInput = () => {
+const triggerRecommendFileInput = (section) => {
+  currentRecommendSection.value = section
   recommendFileInputRef.value?.click()
 }
 
-const handleRecommendImageSelect = async (event, section) => {
+const handleRecommendImageSelect = (event) => {
   const file = event.target.files?.[0]
   if (!file) return
 
@@ -226,33 +236,15 @@ const handleRecommendImageSelect = async (event, section) => {
     return
   }
 
-  isUploadingRecommend.value = true
-
-  try {
-    // 로컬 미리보기 (실제 API 연동 시 교체)
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      section.bannerImage = e.target.result
-    }
-    reader.readAsDataURL(file)
-
-    // TODO: 실제 API 연동 시 아래 코드 사용
-    // const formData = new FormData()
-    // formData.append('file', file)
-    // const response = await $api.postFormData('/admin/images', formData)
-    // section.bannerImage = response.data?.imageUrl
-
+  // 섹션에 미리보기 URL 저장
+  if (currentRecommendSection.value) {
+    currentRecommendSection.value.bannerImage = URL.createObjectURL(file)
     uiStore.showToast({ type: 'success', message: '이미지가 업로드되었습니다.' })
-  } catch (error) {
-    uiStore.showToast({
-      type: 'error',
-      message: error.message || '이미지 업로드에 실패했습니다.',
-    })
-  } finally {
-    isUploadingRecommend.value = false
-    if (recommendFileInputRef.value) {
-      recommendFileInputRef.value.value = ''
-    }
+  }
+
+  // input 초기화
+  if (recommendFileInputRef.value) {
+    recommendFileInputRef.value.value = ''
   }
 }
 
@@ -288,6 +280,15 @@ onMounted(() => {
     </div>
 
     <div v-else class="space-y-6">
+      <!-- 숨겨진 파일 input (전역) -->
+      <input
+        ref="recommendFileInputRef"
+        type="file"
+        accept="image/*"
+        class="hidden"
+        @change="handleRecommendImageSelect"
+      >
+
       <!-- 안내 -->
       <div class="bg-primary-50 border border-primary-200 rounded-lg p-4">
         <div class="flex items-start gap-3">
@@ -389,8 +390,9 @@ onMounted(() => {
           <!-- 와이어프레임 미리보기 영역 (토글 가능) -->
           <div
             v-show="isWireframeExpanded(section.id)"
-            class="p-6 transition-all"
+            class="p-4 md:p-6 transition-all"
           >
+            <div class="max-w-[1200px]">
             <!-- 베스트 상품 섹션 와이어프레임 -->
             <template v-if="section.id === 'best'">
               <div class="bg-neutral-50 rounded-lg p-4 md:p-6 border border-neutral-200">
@@ -509,15 +511,15 @@ onMounted(() => {
 
             <!-- 추천 상품 섹션 와이어프레임 -->
             <template v-else-if="section.id === 'recommend'">
-              <div class="bg-neutral-50 rounded-lg p-4 md:p-6 border border-neutral-200">
+              <div class="bg-neutral-50 rounded-lg p-4 border border-neutral-200">
                 <!-- 섹션 헤더: 타이틀 + 설명 -->
-                <div class="flex flex-col md:flex-row gap-3 md:gap-4 mb-6">
+                <div class="flex flex-col md:flex-row gap-2 md:gap-3 mb-4">
                   <div>
                     <label class="block text-xs text-neutral-500 mb-1">타이틀</label>
                     <input
                       v-model="section.title"
                       type="text"
-                      class="w-full md:w-48 px-3 py-2 text-lg font-bold text-neutral-900 bg-white border border-neutral-300 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 focus:outline-none"
+                      class="w-full md:w-40 px-2.5 py-1.5 text-base font-bold text-neutral-900 bg-white border border-neutral-300 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 focus:outline-none"
                       placeholder="타이틀 입력"
                     >
                   </div>
@@ -526,29 +528,22 @@ onMounted(() => {
                     <input
                       v-model="section.description"
                       type="text"
-                      class="w-full md:w-56 px-3 py-2 text-sm text-neutral-600 bg-white border border-neutral-300 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 focus:outline-none"
+                      class="w-full md:w-48 px-2.5 py-1.5 text-sm text-neutral-600 bg-white border border-neutral-300 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 focus:outline-none"
                       placeholder="설명 입력"
                     >
                   </div>
                 </div>
 
                 <!-- 데스크탑: 2컬럼 레이아웃 -->
-                <div class="hidden md:flex gap-6">
-                  <!-- 좌측: 배너 이미지 영역 (파일 업로드) - 정방형 -->
-                  <div class="w-1/2">
+                <div class="hidden md:flex gap-8">
+                  <!-- 좌측: 배너 이미지 영역 (파일 업로드) + 링크 -->
+                  <div class="w-[450px] flex-shrink-0">
                     <label class="block text-xs text-neutral-500 mb-1">배너 이미지</label>
-                    <input
-                      ref="recommendFileInputRef"
-                      type="file"
-                      accept="image/*"
-                      class="hidden"
-                      @change="handleRecommendImageSelect($event, section)"
-                    >
 
                     <!-- 이미지가 있을 때 -->
                     <div
                       v-if="section.bannerImage"
-                      class="relative aspect-square bg-neutral-100 rounded-lg overflow-hidden border border-neutral-200 group"
+                      class="relative w-[450px] h-[450px] bg-neutral-100 rounded-lg overflow-hidden border border-neutral-200 group"
                     >
                       <img
                         :src="section.bannerImage"
@@ -559,7 +554,7 @@ onMounted(() => {
                         <button
                           type="button"
                           class="px-3 py-1.5 bg-white text-neutral-700 text-sm font-medium rounded-lg hover:bg-neutral-100"
-                          @click="triggerRecommendFileInput"
+                          @click="triggerRecommendFileInput(section)"
                         >
                           변경
                         </button>
@@ -573,38 +568,37 @@ onMounted(() => {
                       </div>
                     </div>
 
-                    <!-- 업로드 중 -->
-                    <div
-                      v-else-if="isUploadingRecommend"
-                      class="aspect-square bg-neutral-100 rounded-lg border-2 border-dashed border-neutral-300 flex items-center justify-center"
-                    >
-                      <div class="text-center">
-                        <UiSpinner size="lg" class="mx-auto mb-3" />
-                        <p class="text-sm text-neutral-500">이미지 업로드 중...</p>
-                      </div>
-                    </div>
-
                     <!-- 이미지가 없을 때 (업로드 영역) -->
                     <div
                       v-else
-                      class="aspect-square bg-white rounded-lg border-2 border-dashed border-neutral-300 hover:border-primary-400 cursor-pointer transition-colors flex items-center justify-center"
-                      @click="triggerRecommendFileInput"
+                      class="w-[450px] h-[450px] bg-white rounded-lg border-2 border-dashed border-neutral-300 hover:border-primary-400 cursor-pointer transition-colors flex items-center justify-center"
+                      @click="triggerRecommendFileInput(section)"
                     >
                       <div class="text-center p-4">
-                        <svg class="w-16 h-16 mx-auto mb-4 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="w-12 h-12 mx-auto mb-2 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
-                        <p class="text-sm font-medium text-neutral-600">클릭하여 이미지 업로드</p>
-                        <p class="text-xs text-neutral-400 mt-1">권장: 정방형 이미지 (1:1)</p>
+                        <p class="text-sm font-medium text-neutral-600">클릭하여 업로드</p>
                       </div>
+                    </div>
+
+                    <!-- 링크 입력 -->
+                    <div class="mt-3">
+                      <label class="block text-xs text-neutral-500 mb-1">새창으로 이동할 링크</label>
+                      <input
+                        v-model="section.bannerLink"
+                        type="url"
+                        class="w-full px-3 py-2 text-sm text-neutral-900 bg-white border border-neutral-300 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 focus:outline-none"
+                        placeholder="https://example.com"
+                      >
                     </div>
                   </div>
 
                   <!-- 우측: 브랜드명 + 서브타이틀 + 상품 카드 -->
-                  <div class="w-1/2 flex flex-col">
+                  <div class="flex-1 flex flex-col items-center">
                     <!-- 브랜드명 (고정) + 서브타이틀 (편집 가능) -->
                     <div class="mb-4">
-                      <div class="text-center mb-3">
+                      <div class="text-center mb-2">
                         <span class="inline-block px-3 py-1 bg-neutral-200 text-neutral-500 text-xs rounded-full">
                           {{ section.brandName }}
                         </span>
@@ -614,7 +608,7 @@ onMounted(() => {
                         <input
                           v-model="section.subTitle"
                           type="text"
-                          class="w-full px-3 py-2 text-lg font-bold text-neutral-900 bg-white border border-neutral-300 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 focus:outline-none text-center"
+                          class="w-full px-3 py-1.5 text-base font-bold text-neutral-900 bg-white border border-neutral-300 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 focus:outline-none text-center"
                           placeholder="서브 타이틀 입력"
                         >
                       </div>
@@ -633,14 +627,14 @@ onMounted(() => {
                           </svg>
                         </button>
 
-                        <!-- 상품 카드 그리드 -->
-                        <div class="grid grid-cols-2 gap-3">
+                        <!-- 상품 카드 -->
+                        <div class="flex gap-3">
                           <div
                             v-for="product in getSampleProducts(2)"
                             :key="product.id"
-                            class="bg-white rounded-lg overflow-hidden border border-neutral-200"
+                            class="w-[250px] flex-shrink-0 bg-white rounded-lg overflow-hidden border border-neutral-200"
                           >
-                            <!-- 이미지 영역 - 정방형 -->
+                            <!-- 이미지 영역 -->
                             <div class="aspect-square bg-neutral-200 flex items-center justify-center">
                               <svg class="w-10 h-10 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -648,10 +642,10 @@ onMounted(() => {
                             </div>
                             <!-- 상품 정보 -->
                             <div class="p-2.5">
-                              <p class="text-xs text-neutral-900 font-medium mb-1.5 truncate">{{ product.name }}</p>
+                              <p class="text-sm text-neutral-900 font-medium mb-1 truncate">{{ product.name }}</p>
                               <div class="flex items-center gap-1 flex-wrap">
                                 <span class="px-1 py-0.5 bg-primary-600 text-white text-xs font-bold rounded">{{ product.discountRate }}%</span>
-                                <span class="text-xs font-bold text-neutral-900">{{ product.price }}</span>
+                                <span class="text-sm font-bold text-neutral-900">{{ product.price }}</span>
                               </div>
                             </div>
                           </div>
@@ -676,19 +670,11 @@ onMounted(() => {
                   <!-- 배너 이미지 -->
                   <div>
                     <label class="block text-xs text-neutral-500 mb-1">배너 이미지</label>
-                    <input
-                      ref="recommendFileInputRef"
-                      type="file"
-                      accept="image/*"
-                      class="hidden"
-                      @change="handleRecommendImageSelect($event, section)"
-                    >
 
                     <!-- 이미지가 있을 때 -->
                     <div
                       v-if="section.bannerImage"
                       class="relative aspect-square bg-neutral-100 rounded-lg overflow-hidden border border-neutral-200"
-                      @click="triggerRecommendFileInput"
                     >
                       <img
                         :src="section.bannerImage"
@@ -699,28 +685,17 @@ onMounted(() => {
                         <button
                           type="button"
                           class="px-2.5 py-1 bg-white/90 text-neutral-700 text-xs font-medium rounded-lg"
-                          @click.stop="triggerRecommendFileInput"
+                          @click="triggerRecommendFileInput(section)"
                         >
                           변경
                         </button>
                         <button
                           type="button"
                           class="px-2.5 py-1 bg-error-500/90 text-white text-xs font-medium rounded-lg"
-                          @click.stop="removeRecommendImage(section)"
+                          @click="removeRecommendImage(section)"
                         >
                           삭제
                         </button>
-                      </div>
-                    </div>
-
-                    <!-- 업로드 중 -->
-                    <div
-                      v-else-if="isUploadingRecommend"
-                      class="aspect-square bg-neutral-100 rounded-lg border-2 border-dashed border-neutral-300 flex items-center justify-center"
-                    >
-                      <div class="text-center">
-                        <UiSpinner size="lg" class="mx-auto mb-3" />
-                        <p class="text-sm text-neutral-500">이미지 업로드 중...</p>
                       </div>
                     </div>
 
@@ -728,7 +703,7 @@ onMounted(() => {
                     <div
                       v-else
                       class="aspect-square bg-white rounded-lg border-2 border-dashed border-neutral-300 hover:border-primary-400 cursor-pointer transition-colors flex items-center justify-center"
-                      @click="triggerRecommendFileInput"
+                      @click="triggerRecommendFileInput(section)"
                     >
                       <div class="text-center p-4">
                         <svg class="w-12 h-12 mx-auto mb-3 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -737,6 +712,17 @@ onMounted(() => {
                         <p class="text-sm font-medium text-neutral-600">클릭하여 이미지 업로드</p>
                         <p class="text-xs text-neutral-400 mt-1">권장: 정방형 (1:1)</p>
                       </div>
+                    </div>
+
+                    <!-- 링크 입력 -->
+                    <div class="mt-3">
+                      <label class="block text-xs text-neutral-500 mb-1">새창으로 이동할 링크</label>
+                      <input
+                        v-model="section.bannerLink"
+                        type="url"
+                        class="w-full px-3 py-2 text-sm text-neutral-900 bg-white border border-neutral-300 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-100 focus:outline-none"
+                        placeholder="https://example.com"
+                      >
                     </div>
                   </div>
 
@@ -893,6 +879,78 @@ onMounted(() => {
                       <!-- 리뷰 내용 -->
                       <p class="text-xs text-neutral-600 line-clamp-2 mb-1">{{ review.content }}</p>
                       <p class="text-xs text-neutral-400 truncate">{{ review.author }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- 인스타그램 섹션 와이어프레임 -->
+            <template v-else-if="section.id === 'instagram'">
+              <div class="bg-neutral-50 rounded-lg p-4 md:p-6 border border-neutral-200">
+                <!-- 안내 문구 -->
+                <div class="flex items-start gap-2 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <svg class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div class="text-sm text-amber-800">
+                    <p class="font-medium">Instagram API 연동 필수</p>
+                    <p class="text-amber-700 mt-0.5">액세스 토큰은 60일마다 재발급이 필요합니다.</p>
+                  </div>
+                </div>
+
+                <!-- 섹션 헤더: 타이틀 + 설명 (고정) + 네비게이션 -->
+                <div class="flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-4 mb-6">
+                  <div class="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-3">
+                    <p class="text-lg font-bold text-neutral-900">Instagram</p>
+                    <p class="text-sm text-neutral-600">@instagramId</p>
+                  </div>
+                  <!-- 네비게이션 버튼 (데스크탑에서만 표시) -->
+                  <div class="hidden md:flex items-center gap-2">
+                    <button type="button" class="w-10 h-10 flex items-center justify-center rounded-full border border-neutral-300 text-neutral-400 hover:border-neutral-400 hover:text-neutral-500">
+                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <button type="button" class="w-10 h-10 flex items-center justify-center rounded-full border border-neutral-300 text-neutral-400 hover:border-neutral-400 hover:text-neutral-500">
+                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 이미지 카드: 모바일 슬라이드 -->
+                <div class="md:hidden overflow-x-auto scrollbar-hide -mx-4 px-4">
+                  <div class="flex gap-3 snap-x snap-mandatory" style="width: max-content;">
+                    <div
+                      v-for="i in 4"
+                      :key="i"
+                      class="w-32 flex-shrink-0 snap-start"
+                    >
+                      <!-- 이미지 영역 (4:6 비율) -->
+                      <div class="aspect-[4/6] bg-neutral-200 rounded-lg flex items-center justify-center">
+                        <svg class="w-8 h-8 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- 슬라이드 힌트 -->
+                  <p class="text-xs text-neutral-400 text-center mt-3">← 터치하여 슬라이드 →</p>
+                </div>
+
+                <!-- 이미지 카드: 데스크탑 그리드 -->
+                <div class="hidden md:grid grid-cols-4 gap-4">
+                  <div
+                    v-for="i in 4"
+                    :key="i"
+                  >
+                    <!-- 이미지 영역 (4:6 비율) -->
+                    <div class="aspect-[4/6] bg-neutral-200 rounded-lg flex items-center justify-center">
+                      <svg class="w-12 h-12 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
                     </div>
                   </div>
                 </div>
@@ -1239,6 +1297,7 @@ onMounted(() => {
                 </div>
               </div>
             </template>
+            </div>
           </div>
         </div>
       </div>
