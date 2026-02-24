@@ -26,6 +26,17 @@ const positionOptions = [
   { value: 'FULL', label: '풀' },
 ]
 
+// 배너 위치별 안내 문구
+const positionTips = {
+  HERO: '메인 최상단에 노출됩니다. 16:9 비율 이미지를 사용해주세요.',
+  SLIDE: '5.5:1 비율의 이미지를 사용하고, 중요한 텍스트는 중앙정렬하여 사용해주세요. 모바일에서는 4:1 비율로 조정됩니다.',
+  HALF: '2개를 등록하여 사용하세요. 화면 전체의 정방형 이미지로 좌우 절반씩 차지하는 배너입니다. 모바일에서는 상하 배치로 변환됩니다. 제목이 타이틀 영역에 노출됩니다. 링크를 입력하면 "더 알아보기" 버튼으로 노출됩니다.',
+  FULL: '화면 전체에 노출되는 배너입니다. 16:9 비율 이미지를 사용해주세요.',
+}
+
+// 현재 선택된 위치의 안내 문구
+const currentPositionTip = computed(() => positionTips[form.value.position] || '')
+
 // 오늘 날짜+시간 기본값 (YYYY-MM-DDTHH:mm 형식)
 const getDefaultDateTime = () => {
   const now = new Date()
@@ -395,6 +406,10 @@ onMounted(() => {
                 {{ opt.label }}
               </label>
             </div>
+            <!-- 위치별 안내 문구 -->
+            <p v-if="currentPositionTip" class="mt-2 text-xs text-neutral-500">
+              {{ currentPositionTip }}
+            </p>
           </div>
 
           <!-- 노출 순서 -->
