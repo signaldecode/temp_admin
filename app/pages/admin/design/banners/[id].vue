@@ -1,8 +1,8 @@
 <script setup>
 /**
  * 배너 등록/수정 페이지
- * - /admin/contents/banners/new → 등록 모드
- * - /admin/contents/banners/:id → 수정 모드
+ * - /admin/design/banners/new → 등록 모드
+ * - /admin/design/banners/:id → 수정 모드
  */
 
 import { useUiStore } from '~/stores/ui'
@@ -96,7 +96,7 @@ const fetchBanner = async () => {
       type: 'error',
       message: error.message || '배너 정보를 불러오는데 실패했습니다.',
     })
-    router.push('/admin/contents/banners')
+    router.push('/admin/design/banners')
   } finally {
     isLoading.value = false
   }
@@ -206,9 +206,6 @@ const handleSave = async () => {
   try {
     const requestData = buildRequestData()
 
-    // TODO: 이미지 파일 업로드가 필요한 경우 별도 처리 필요
-    // 현재는 imageUrl을 직접 사용
-
     if (isEditMode.value) {
       // 수정
       await patch(`/admin/banners/${bannerId.value}`, requestData)
@@ -219,7 +216,7 @@ const handleSave = async () => {
       uiStore.showToast({ type: 'success', message: '배너가 등록되었습니다.' })
     }
 
-    router.push('/admin/contents/banners')
+    router.push('/admin/design/banners')
   } catch (error) {
     uiStore.showToast({
       type: 'error',
@@ -237,7 +234,7 @@ const handleDelete = async () => {
   try {
     await del(`/admin/banners/${bannerId.value}`)
     uiStore.showToast({ type: 'success', message: '배너가 삭제되었습니다.' })
-    router.push('/admin/contents/banners')
+    router.push('/admin/design/banners')
   } catch (error) {
     uiStore.showToast({
       type: 'error',

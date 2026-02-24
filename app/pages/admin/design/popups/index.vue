@@ -122,8 +122,8 @@ const getStatusBadge = (status) => {
 const getPopupTypeLabel = (type) => popupTypeOptions.find((t) => t.value === type)?.label || type || '-'
 
 // 페이지 이동
-const goToCreate = () => router.push('/admin/contents/popups/new')
-const goToDetail = (popup) => router.push(`/admin/contents/popups/${popup.id}`)
+const goToCreate = () => router.push('/admin/design/popups/new')
+const goToDetail = (popup) => router.push(`/admin/design/popups/${popup.id}`)
 
 // 검색
 const handleSearch = () => {

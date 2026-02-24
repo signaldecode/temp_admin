@@ -1,8 +1,8 @@
 <script setup>
 /**
  * 팝업 등록/수정 페이지
- * - /admin/contents/popups/new → 등록 모드
- * - /admin/contents/popups/:id → 수정 모드
+ * - /admin/design/popups/new → 등록 모드
+ * - /admin/design/popups/:id → 수정 모드
  *
  * API Request JSON (application/json):
  * {
@@ -125,7 +125,7 @@ const fetchPopup = async () => {
       type: 'error',
       message: error.message || '팝업을 불러오는데 실패했습니다.',
     })
-    router.push('/admin/contents/popups')
+    router.push('/admin/design/popups')
   } finally {
     isLoading.value = false
   }
@@ -219,7 +219,7 @@ const handleSave = async () => {
       await post('/admin/popups', requestData)
       uiStore.showToast({ type: 'success', message: '팝업이 등록되었습니다.' })
     }
-    router.push('/admin/contents/popups')
+    router.push('/admin/design/popups')
   } catch (error) {
     uiStore.showToast({
       type: 'error',
@@ -237,7 +237,7 @@ const handleDelete = async () => {
   try {
     await del(`/admin/popups/${popupId.value}`)
     uiStore.showToast({ type: 'success', message: '팝업이 삭제되었습니다.' })
-    router.push('/admin/contents/popups')
+    router.push('/admin/design/popups')
   } catch (error) {
     uiStore.showToast({
       type: 'error',

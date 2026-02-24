@@ -148,8 +148,8 @@ const getStatusBadge = (status) => statusOptions.find((s) => s.value === status)
 const getPositionLabel = (position) => positionOptions.find((p) => p.value === position)?.label || position
 
 // 페이지 이동
-const goToCreate = () => router.push('/admin/contents/banners/new')
-const goToDetail = (banner) => router.push(`/admin/contents/banners/${banner.id}`)
+const goToCreate = () => router.push('/admin/design/banners/new')
+const goToDetail = (banner) => router.push(`/admin/design/banners/${banner.id}`)
 
 // 검색
 const handleSearch = () => {
