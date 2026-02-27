@@ -48,6 +48,22 @@ const isDisabled = computed(() => isFullyDisabled.value)
 // name, description 외 나머지 필드 비활성화 여부
 const isOtherFieldsDisabled = computed(() => isFullyDisabled.value || isStopped.value)
 
+// TODO: API 연동 시 실제 카테고리 목록 조회로 대체
+// const { getCategories } = usePromotion() 또는 별도 API 사용
+const categories = ref([
+  { id: 1, name: '의류' },
+  { id: 2, name: '신발' },
+  { id: 3, name: '가방' },
+  { id: 4, name: '액세서리' },
+  { id: 5, name: '뷰티' },
+  { id: 6, name: '홈/리빙' },
+])
+
+// TODO: API 연동 시 카테고리 목록 조회 함수 구현
+// const fetchCategories = async () => {
+//   categories.value = await getCategories()
+// }
+
 // 폼 데이터
 const form = ref({
   name: '',
@@ -66,6 +82,7 @@ const form = ref({
   validFrom: '',
   validTo: '',
   notice: '',
+  applicableCategories: [], // 적용 카테고리 ID 목록
 })
 
 // 쿠폰 타입 변경 시 기본 유의사항으로 초기화
@@ -73,6 +90,24 @@ watch(() => form.value.couponType, (newType) => {
   const defaultNotes = getDefaultNotes(newType)
   form.value.notice = defaultNotes.join('\n')
 })
+
+// 카테고리 전체 선택 여부
+const isAllCategories = computed(() => form.value.applicableCategories.length === 0)
+
+// 카테고리 전체 선택 토글
+const toggleAllCategories = () => {
+  form.value.applicableCategories = []
+}
+
+// 개별 카테고리 토글
+const toggleCategory = (id) => {
+  const idx = form.value.applicableCategories.indexOf(id)
+  if (idx > -1) {
+    form.value.applicableCategories.splice(idx, 1)
+  } else {
+    form.value.applicableCategories.push(id)
+  }
+}
 
 const isLoading = ref(false)
 const isSaving = ref(false)
@@ -101,6 +136,7 @@ const fetchCoupon = async () => {
       validFrom: data.validFrom ? data.validFrom.slice(0, 16) : '',
       validTo: data.validTo ? data.validTo.slice(0, 16) : '',
       notice: data.notice || getDefaultNotes(data.couponType || 'PRODUCT_DISCOUNT').join('\n'),
+      applicableCategories: data.applicableCategories || [], // TODO: API 응답에 포함되어야 함
     }
   } catch (error) {
     uiStore.showToast({ type: 'error', message: error.message || '쿠폰을 찾을 수 없습니다.' })
@@ -142,6 +178,8 @@ const buildPayload = () => {
     validityType: form.value.validityType,
     allowPromotionOverlap: Boolean(form.value.allowPromotionOverlap),
     allowDuplicateUse: Boolean(form.value.allowDuplicateUse),
+    // TODO: API 스펙에 맞게 필드명 확인 필요
+    applicableCategories: form.value.applicableCategories.length > 0 ? form.value.applicableCategories : [],
   }
 
   // validityType에 따라 관련 필드만 포함
@@ -465,6 +503,45 @@ onMounted(async () => {
             <p class="text-xs text-neutral-400 mt-1">쿠폰 타입 변경 시 기본 유의사항으로 초기화됩니다.</p>
           </div>
         </div>
+      </UiCard>
+
+      <!-- 적용 카테고리 -->
+      <UiCard title="적용 카테고리">
+        <div class="flex flex-wrap gap-2">
+          <label
+            :class="[
+              'px-4 py-2 border rounded-lg transition-colors text-sm',
+              isOtherFieldsDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+              isAllCategories
+                ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
+                : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
+            ]"
+          >
+            <input type="checkbox" :checked="isAllCategories" :disabled="isOtherFieldsDisabled" class="sr-only" @change="toggleAllCategories">
+            전체
+          </label>
+          <label
+            v-for="cat in categories"
+            :key="cat.id"
+            :class="[
+              'px-4 py-2 border rounded-lg transition-colors text-sm',
+              isOtherFieldsDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+              form.applicableCategories.includes(cat.id)
+                ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
+                : 'border-neutral-200 hover:border-neutral-300 text-neutral-600',
+            ]"
+          >
+            <input
+              type="checkbox"
+              :checked="form.applicableCategories.includes(cat.id)"
+              :disabled="isOtherFieldsDisabled"
+              class="sr-only"
+              @change="toggleCategory(cat.id)"
+            >
+            {{ cat.name }}
+          </label>
+        </div>
+        <p class="text-xs text-neutral-400 mt-2">선택하지 않으면 전체 상품에 적용됩니다.</p>
       </UiCard>
 
       <!-- 할인 정책 -->

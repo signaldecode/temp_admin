@@ -12,9 +12,38 @@ const uiStore = useUiStore()
 
 const isLoading = ref(true)
 const isSaving = ref(false)
+const isEditMode = ref(false)
+const originalLabels = ref({}) // 수정 전 원본 라벨 저장
+
+// 수정 모드 시작
+const toggleEditMode = () => {
+  // 원본 라벨 저장
+  originalLabels.value = {}
+  availableNavItems.value.forEach(item => {
+    originalLabels.value[item.id] = item.label
+  })
+  isEditMode.value = true
+}
+
+// 수정 모드 취소 (원본 복원)
+const cancelEditMode = () => {
+  // 원본 라벨 복원
+  availableNavItems.value.forEach(item => {
+    if (originalLabels.value[item.id]) {
+      item.label = originalLabels.value[item.id]
+    }
+  })
+  // selectedNavItems도 복원
+  selectedNavItems.value.forEach(item => {
+    if (originalLabels.value[item.id]) {
+      item.label = originalLabels.value[item.id]
+    }
+  })
+  isEditMode.value = false
+}
 
 // 사용 가능한 네비게이션 항목
-const availableNavItems = [
+const availableNavItems = ref([
   { id: 'best', label: '베스트' },
   { id: 'category', label: '카테고리' },
   { id: 'qna', label: 'Q&A' },
@@ -23,7 +52,7 @@ const availableNavItems = [
   { id: 'review', label: '리뷰' },
   { id: 'support', label: '고객센터' },
   { id: 'coupons', label: '쿠폰' },
-]
+])
 
 // 선택된 네비게이션 항목 (순서대로)
 const selectedNavItems = ref([])
@@ -39,13 +68,24 @@ const isSelected = (id) => {
 
 // 칩 토글 (선택/해제)
 const toggleNavItem = (item) => {
+  if (isEditMode.value) return // 수정 모드에서는 토글 비활성화
+
   const index = selectedNavItems.value.findIndex(i => i.id === item.id)
   if (index > -1) {
     // 이미 선택됨 → 제거
     selectedNavItems.value.splice(index, 1)
   } else {
-    // 선택 안 됨 → 추가
-    selectedNavItems.value.push({ ...item })
+    // 선택 안 됨 → 추가 (availableNavItems에서 현재 label 가져오기)
+    const sourceItem = availableNavItems.value.find(i => i.id === item.id)
+    selectedNavItems.value.push({ id: item.id, label: sourceItem?.label || item.label })
+  }
+}
+
+// selectedNavItems의 label도 업데이트 (수정 모드에서 label 변경 시)
+const updateSelectedItemLabel = (id, newLabel) => {
+  const item = selectedNavItems.value.find(i => i.id === id)
+  if (item) {
+    item.label = newLabel
   }
 }
 
@@ -98,6 +138,15 @@ const fetchHeaderConfig = async () => {
 
     // order 기준으로 정렬하여 저장
     const menus = response.data?.menus || []
+
+    // API에서 받은 label로 availableNavItems 업데이트
+    menus.forEach(menu => {
+      const item = availableNavItems.value.find(i => i.id === menu.id)
+      if (item && menu.label) {
+        item.label = menu.label
+      }
+    })
+
     selectedNavItems.value = menus
       .sort((a, b) => a.order - b.order)
       .map(item => ({ id: item.id, label: item.label }))
@@ -123,6 +172,11 @@ const handleSave = async () => {
     await $api.put('/admin/tenant/header-menu', payload)
 
     uiStore.showToast({ type: 'success', message: '헤더 설정이 저장되었습니다.' })
+
+    // 수정 모드였으면 종료
+    if (isEditMode.value) {
+      isEditMode.value = false
+    }
   } catch (error) {
     uiStore.showToast({ type: 'error', message: '저장에 실패했습니다.' })
   } finally {
@@ -219,27 +273,76 @@ onMounted(() => {
       <!-- 네비게이션 항목 선택 -->
       <UiCard>
         <template #header>
-          <h3 class="font-semibold text-neutral-900">네비게이션 항목</h3>
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-neutral-900">네비게이션 항목</h3>
+            <UiButton
+              v-if="!isEditMode"
+              variant="outline"
+              size="sm"
+              @click="toggleEditMode"
+            >
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              수정
+            </UiButton>
+            <UiButton
+              v-else
+              variant="ghost"
+              size="sm"
+              @click="cancelEditMode"
+            >
+              취소
+            </UiButton>
+          </div>
         </template>
 
-        <div class="flex flex-wrap gap-2">
-          <button
+        <!-- 수정 모드: input 필드 -->
+        <div v-if="isEditMode" class="space-y-3">
+          <!-- 안내 문구 -->
+          <div class="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+            <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p class="text-sm text-amber-800">수정 후 <span class="font-semibold">하단의 헤더 저장</span> 버튼을 클릭해주세요.</p>
+          </div>
+
+          <div
             v-for="item in availableNavItems"
             :key="item.id"
-            type="button"
-            :class="[
-              'px-4 py-2 rounded-full text-sm font-medium text-white transition-colors',
-              isSelected(item.id)
-                ? 'bg-primary-600'
-                : 'bg-neutral-500 hover:bg-neutral-600',
-            ]"
-            @click="toggleNavItem(item)"
+            class="flex items-center gap-3"
           >
-            {{ item.label }}
-          </button>
+            <span class="w-24 text-sm text-neutral-500">{{ item.id }}</span>
+            <input
+              v-model="item.label"
+              type="text"
+              class="flex-1 px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              @input="updateSelectedItemLabel(item.id, item.label)"
+            >
+          </div>
+          <p class="text-xs text-neutral-400 mt-3">항목의 표시 이름을 수정할 수 있습니다.</p>
         </div>
 
-        <p class="text-xs text-neutral-400 mt-3">클릭하여 선택/해제합니다. 선택된 항목은 헤더에 표시됩니다.</p>
+        <!-- 일반 모드: 칩 버튼 -->
+        <div v-else>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="item in availableNavItems"
+              :key="item.id"
+              type="button"
+              :class="[
+                'px-4 py-2 rounded-full text-sm font-medium text-white transition-colors',
+                isSelected(item.id)
+                  ? 'bg-primary-600'
+                  : 'bg-neutral-500 hover:bg-neutral-600',
+              ]"
+              @click="toggleNavItem(item)"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+          <p class="text-xs text-neutral-400 mt-3">클릭하여 선택/해제합니다. 선택된 항목은 헤더에 표시됩니다.</p>
+        </div>
       </UiCard>
     </div>
   </LayoutFormPage>

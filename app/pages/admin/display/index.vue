@@ -13,97 +13,43 @@ const uiStore = useUiStore()
 const isLoading = ref(true)
 const isSaving = ref(false)
 
-// 전시 섹션 목록
-const sections = ref([
-  {
-    id: 'best',
-    name: '베스트 상품',
-    type: 'PRODUCT',
-    isActive: true,
-    sortOrder: 1,
-    displayCount: 4,
-    // 편집 가능한 필드
-    title: 'Best Item',
-    description: '가장 사랑받는 인기 제품',
-  },
-  {
-    id: 'new',
-    name: '신상품',
-    type: 'PRODUCT',
-    isActive: true,
-    sortOrder: 2,
-    displayCount: 4,
-    title: 'New Arrivals',
-    description: '새롭게 입고된 상품',
-  },
-  {
-    id: 'recommend',
-    name: '추천 상품',
+// 섹션별 기본 설정 (type, displayCount 등 프론트에서 관리하는 값)
+const sectionDefaults = {
+  best: { type: 'PRODUCT', displayCount: 4 },
+  new: { type: 'PRODUCT', displayCount: 4 },
+  recommend: {
     type: 'RECOMMEND',
-    isActive: false,
-    sortOrder: 3,
     displayCount: 2,
-    title: "MD's Pick",
-    description: 'MD가 추천하는 제품',
-    // 추천 섹션 전용 필드
     brandName: 'SignalDecode', // 고정 (수정 불가)
-    subTitle: 'MD 추천 아이템', // 편집 가능
-    bannerImage: '', // 좌측 배너 이미지
-    bannerLink: '', // 배너 클릭 시 새창으로 이동할 링크
   },
-  {
-    id: 'review',
-    name: '리뷰',
-    type: 'REVIEW',
-    isActive: false,
-    sortOrder: 4,
-    displayCount: 10, // 5개씩 2줄
-    title: 'Real Review',
-    description: '고객님들의 생생한 후기',
-  },
-  {
-    id: 'halfBanner',
-    name: '하프 배너',
-    type: 'HALF_BANNER',
-    isActive: false,
-    sortOrder: 5,
-  },
-  {
-    id: 'fullBanner',
-    name: '전체 배너',
-    type: 'FULL_BANNER',
-    isActive: false,
-    sortOrder: 6,
-  },
-  {
-    id: 'slideBanner',
-    name: '슬라이드 배너',
-    type: 'SLIDE_BANNER',
-    isActive: false,
-    sortOrder: 7,
-  },
-  {
-    id: 'instagram',
-    name: '인스타그램',
-    type: 'INSTAGRAM',
-    isActive: false,
-    sortOrder: 8,
-    displayCount: 4,
-  },
-  {
-    id: 'category',
-    name: '카테고리별 상품',
+  review: { type: 'REVIEW', displayCount: 10 },
+  half_banner: { type: 'HALF_BANNER' },
+  full_banner: { type: 'FULL_BANNER' },
+  slide_banner: { type: 'SLIDE_BANNER' },
+  instagram: { type: 'INSTAGRAM', displayCount: 4 },
+  category: {
     type: 'CATEGORY',
-    isActive: false,
-    sortOrder: 9,
     displayCount: 4,
-    title: 'Shop by Category',
-    description: '카테고리별 인기 상품',
-    // 카테고리 칩 목록
     categories: ['전체', '예시1', '예시2', '예시3', '예시4'],
     selectedCategory: '전체',
   },
-])
+}
+
+// keywordCode → 프론트 id 매핑 (API에서 snake_case, 프론트에서 camelCase 사용)
+const keywordCodeToId = {
+  best: 'best',
+  new: 'new',
+  recommend: 'recommend',
+  review: 'review',
+  half_banner: 'halfBanner',
+  full_banner: 'fullBanner',
+  slide_banner: 'slideBanner',
+  instagram: 'instagram',
+  category: 'category',
+}
+
+// 전시 섹션 목록
+const sections = ref([])
 
 // 드래그 상태
 const draggedIndex = ref(null)
@@ -111,6 +57,9 @@ const dragOverIndex = ref(null)
 
 // 와이어프레임 프리뷰 토글 상태
 const expandedSections = ref({})
+
+// 초기 데이터 로드 완료 플래그 (중복 호출 방지)
+const initialFetchDone = ref(false)
 
 // 와이어프레임 토글
 const toggleWireframe = (sectionId) => {
@@ -167,12 +116,60 @@ const onDragEnd = () => {
   dragOverIndex.value = null
 }
 
+// 이미지 데이터 파싱 헬퍼
+const parseBannerImage = (item) => {
+  // 1. bannerImage 객체가 있는 경우
+  if (item.bannerImage && typeof item.bannerImage === 'object') {
+    return {
+      id: item.bannerImage.id,
+      url: item.bannerImage.url,
+      altText: item.bannerImage.altText || null,
+    }
+  }
+  // 2. bannerImageUrl 문자열이 있는 경우
+  if (item.bannerImageUrl) {
+    return {
+      id: null,
+      url: item.bannerImageUrl,
+      altText: null,
+    }
+  }
+  // 3. 이미지 없음
+  return null
+}
+
 // 데이터 로드
 const fetchDisplayConfig = async () => {
   isLoading.value = true
   try {
-    // TODO: 실제 API 연동 시 교체
-    await new Promise(resolve => setTimeout(resolve, 500))
+    const response = await $api.get('/admin/displays')
+    const apiData = response.data || []
+
+    // API 데이터를 프론트 sections 형식으로 변환
+    sections.value = apiData
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(item => {
+        const frontId = keywordCodeToId[item.keywordCode] || item.keywordCode
+        const defaults = sectionDefaults[item.keywordCode] || {}
+
+        return {
+          // API 데이터
+          apiId: item.id, // API의 실제 id (저장 시 필요)
+          id: frontId, // 프론트에서 사용하는 id
+          name: item.keyword,
+          keywordCode: item.keywordCode,
+          isActive: item.isActive ?? false,
+          sortOrder: item.sortOrder,
+          title: item.title || '',
+          description: item.description || '',
+          subTitle: item.subtitle || '', // API: subtitle → 프론트: subTitle
+          // 이미지 객체 (id, url, altText) 또는 null
+          bannerImage: parseBannerImage(item),
+          bannerLink: item.linkUrl || '',
+          // 프론트 기본값
+          ...defaults,
+        }
+      })
   } catch (error) {
     uiStore.showToast({ type: 'error', message: '전시 설정을 불러오지 못했습니다.' })
   } finally {
@@ -182,19 +179,52 @@ const fetchDisplayConfig = async () => {
 
 // 저장
 const handleSave = async () => {
+  // 중복 호출 방지
+  if (isSaving.value) return
   isSaving.value = true
   try {
-    const payload = {
-      sections: sections.value.map((section, index) => ({
-        ...section,
-        sortOrder: index + 1,
-      }))
+    // API 요청 페이로드 생성
+    const payload = sections.value.map((section, index) => ({
+      id: section.apiId,
+      sortOrder: index + 1,
+      isActive: section.isActive,
+      title: section.title || null,
+      description: section.description || null,
+      subtitle: section.subTitle || null,
+      linkUrl: section.bannerLink || null,
+      // 기존 이미지 정보 (새 이미지가 아닌 경우에만)
+      bannerImage: section.bannerImage && !section.bannerImage.isNew ? {
+        id: section.bannerImage.id,
+        url: section.bannerImage.url,
+        altText: section.bannerImage.altText || null,
+      } : null,
+    }))
+
+    // FormData 생성
+    const formData = new FormData()
+    formData.append('data', JSON.stringify(payload))
+
+    // 새 이미지 파일이 있으면 추가 (recommend 섹션)
+    const recommendSection = sections.value.find(s => s.id === 'recommend')
+    if (recommendSection?.bannerImage?.isNew && recommendSection.bannerImage.file) {
+      formData.append('bannerImage', recommendSection.bannerImage.file)
     }
 
-    // TODO: 실제 API 연동 시 교체
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await $api.putFormData('/admin/displays', formData)
+
+    // sortOrder 업데이트 및 이미지 상태 정리
+    sections.value.forEach((section, index) => {
+      section.sortOrder = index + 1
+      // 새 이미지였던 것을 기존 이미지로 변환 (다음 저장 시 다시 업로드 방지)
+      if (section.bannerImage?.isNew) {
+        // 서버에서 새 이미지 정보를 받아오도록 다시 fetch
+      }
+    })
 
     uiStore.showToast({ type: 'success', message: '전시 설정이 저장되었습니다.' })
+
+    // 저장 후 최신 데이터 다시 불러오기 (서버에서 이미지 URL 받기)
+    await fetchDisplayConfig()
   } catch (error) {
     uiStore.showToast({ type: 'error', message: '저장에 실패했습니다.' })
   } finally {
@@ -236,10 +266,13 @@ const handleRecommendImageSelect = (event) => {
     return
   }
 
-  // 섹션에 미리보기 URL 저장
+  // 파일 객체와 미리보기 URL 저장 (저장 시점에 업로드)
   if (currentRecommendSection.value) {
-    currentRecommendSection.value.bannerImage = URL.createObjectURL(file)
-    uiStore.showToast({ type: 'success', message: '이미지가 업로드되었습니다.' })
+    currentRecommendSection.value.bannerImage = {
+      file, // 실제 파일 객체 (저장 시 FormData에 추가)
+      preview: URL.createObjectURL(file), // 미리보기용 URL
+      isNew: true, // 새로 추가된 이미지 표시
+    }
   }
 
   // input 초기화
@@ -249,7 +282,11 @@ const handleRecommendImageSelect = (event) => {
 }
 
 const removeRecommendImage = (section) => {
-  section.bannerImage = ''
+  // 미리보기 URL 해제
+  if (section.bannerImage?.preview && section.bannerImage?.isNew) {
+    URL.revokeObjectURL(section.bannerImage.preview)
+  }
+  section.bannerImage = null
 }
 
 // 샘플 리뷰 데이터
@@ -264,6 +301,9 @@ const getSampleReviews = (count) => {
 }
 
 onMounted(() => {
+  // 중복 호출 방지 (Nuxt의 Suspense로 인해 2번 마운트될 수 있음)
+  if (initialFetchDone.value) return
+  initialFetchDone.value = true
   fetchDisplayConfig()
 })
 </script>
@@ -542,11 +582,11 @@ onMounted(() => {
 
                     <!-- 이미지가 있을 때 -->
                     <div
-                      v-if="section.bannerImage"
+                      v-if="section.bannerImage?.url || section.bannerImage?.preview"
                       class="relative w-[450px] h-[450px] bg-neutral-100 rounded-lg overflow-hidden border border-neutral-200 group"
                     >
                       <img
-                        :src="section.bannerImage"
+                        :src="section.bannerImage.preview || section.bannerImage.url"
                         alt="배너 이미지"
                         class="w-full h-full object-cover"
                       >
@@ -673,11 +713,11 @@ onMounted(() => {
 
                     <!-- 이미지가 있을 때 -->
                     <div
-                      v-if="section.bannerImage"
+                      v-if="section.bannerImage?.url || section.bannerImage?.preview"
                       class="relative aspect-square bg-neutral-100 rounded-lg overflow-hidden border border-neutral-200"
                     >
                       <img
-                        :src="section.bannerImage"
+                        :src="section.bannerImage.preview || section.bannerImage.url"
                         alt="배너 이미지"
                         class="w-full h-full object-cover"
                       >

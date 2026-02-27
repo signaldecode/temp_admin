@@ -47,6 +47,9 @@ const product = ref({
   discountValue: 0,
   maxPurchase: 10,
   status: 'ON_SALE',
+  guide: '', // 이용안내
+  policy: '', // 환불규정
+  sampleUrl: '', // 샘플 URL
 })
 
 // 선택된 태그 ID 목록
@@ -483,6 +486,9 @@ const buildRequestData = () => {
     discountValue: product.value.hasDiscount ? product.value.discountValue : 0,
     categoryId: product.value.categoryId || null,
     tagIds: selectedTagIds.value,
+    guide: product.value.guide || null,
+    policy: product.value.policy || null,
+    sampleUrl: product.value.sampleUrl || null,
     options,
     variants: variants.value.map((v) => {
       const variantData = {
@@ -529,6 +535,11 @@ const buildPatchData = () => {
   // 카테고리
   const currentCategoryId = product.value.categoryId || null
   if (currentCategoryId !== orig.category?.id) changes.categoryId = currentCategoryId
+
+  // 이용안내 / 환불규정 / 샘플URL
+  if (product.value.guide !== orig.guide) changes.guide = product.value.guide || null
+  if (product.value.policy !== orig.policy) changes.policy = product.value.policy || null
+  if (product.value.sampleUrl !== orig.sampleUrl) changes.sampleUrl = product.value.sampleUrl || null
 
   // 태그 비교 (배열)
   const tagsSorted = [...selectedTagIds.value].sort()
@@ -680,8 +691,9 @@ const fetchProduct = async () => {
       discountValue: data.discountValue ?? 0,
       maxPurchase: data.maxPurchaseQuantity ?? 10,
       status: data.status || 'ON_SALE',
-
-      
+      guide: data.guide || '',
+      policy: data.policy || '',
+      sampleUrl: data.sampleUrl || '',
     }
 
     // 태그 ID 목록 설정 (API 응답의 tags 배열에서 id 추출)
@@ -823,6 +835,50 @@ onMounted(() => {
               class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               placeholder="상품에 대한 상세 설명을 입력하세요"
             />
+          </div>
+        </div>
+      </UiCard>
+
+      <!-- 상품 정보 -->
+      <UiCard>
+        <template #header>
+          <h3 class="font-semibold text-neutral-900">상품 정보</h3>
+        </template>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">
+              이용안내
+            </label>
+            <textarea
+              v-model="product.guide"
+              rows="4"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              placeholder="상품 이용안내를 입력하세요"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">
+              환불규정
+            </label>
+            <textarea
+              v-model="product.policy"
+              rows="4"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              placeholder="환불규정을 입력하세요"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">
+              샘플 URL
+            </label>
+            <input
+              v-model="product.sampleUrl"
+              type="url"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              placeholder="https://example.com/sample"
+            >
           </div>
         </div>
       </UiCard>

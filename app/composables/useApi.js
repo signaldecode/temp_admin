@@ -68,9 +68,12 @@ export function useApi() {
       // 응답 처리
       let data = null
 
-      const contentType = response.headers.get('content-type')
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json()
+      // 204 No Content는 body가 없으므로 파싱하지 않음
+      if (response.status !== 204) {
+        const contentType = response.headers.get('content-type')
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json()
+        }
       }
 
       // 에러 응답 처리
@@ -155,6 +158,90 @@ export function useApi() {
     return request(endpoint, { method: 'DELETE', body })
   }
 
+  /**
+   * FormData 요청 공통 처리 (multipart/form-data)
+   * @param {string} method - HTTP 메서드 (POST, PUT, PATCH)
+   * @param {string} endpoint - API 엔드포인트
+   * @param {FormData} formData - FormData 객체
+   */
+  const requestFormData = async (method, endpoint, formData) => {
+    const url = `${baseUrl}${endpoint}`
+
+    // 테넌트 헤더 가져오기
+    const tenantStore = useTenantStore()
+    const tenantHeaders = tenantStore.tenantHeader
+
+    try {
+      const response = await fetch(url, {
+        method,
+        credentials: 'include',
+        headers: {
+          // Content-Type은 설정하지 않음 (브라우저가 자동으로 multipart/form-data + boundary 설정)
+          ...tenantHeaders,
+        },
+        body: formData,
+      })
+
+      let data = null
+      if (response.status !== 204) {
+        const contentType = response.headers.get('content-type')
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json()
+        }
+      }
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          const authStore = useAuthStore()
+          authStore.reset()
+          const route = useRoute()
+          if (route.path !== '/login') {
+            const router = useRouter()
+            router.push('/login')
+          }
+        }
+
+        throw new ApiError(
+          data?.message || getDefaultErrorMessage(response.status),
+          response.status,
+          data
+        )
+      }
+
+      return data
+    } catch (error) {
+      if (!(error instanceof ApiError)) {
+        throw new ApiError(
+          '네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+          0,
+          null
+        )
+      }
+      throw error
+    }
+  }
+
+  /**
+   * POST FormData 요청 (multipart/form-data)
+   */
+  const postFormData = (endpoint, formData) => {
+    return requestFormData('POST', endpoint, formData)
+  }
+
+  /**
+   * PUT FormData 요청 (multipart/form-data)
+   */
+  const putFormData = (endpoint, formData) => {
+    return requestFormData('PUT', endpoint, formData)
+  }
+
+  /**
+   * PATCH FormData 요청 (multipart/form-data)
+   */
+  const patchFormData = (endpoint, formData) => {
+    return requestFormData('PATCH', endpoint, formData)
+  }
+
   return {
     request,
     get,
@@ -162,6 +249,9 @@ export function useApi() {
     put,
     patch,
     del,
+    postFormData,
+    putFormData,
+    patchFormData,
     ApiError,
   }
 }

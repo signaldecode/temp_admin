@@ -14,7 +14,7 @@ import { useCatalogStore } from '~/stores/catalog'
 
 const uiStore = useUiStore()
 const catalogStore = useCatalogStore()
-const { get, put } = useApi()
+const { get } = useApi()
 const { $api } = useNuxtApp()
 
 // 로딩 상태
@@ -33,6 +33,10 @@ const deletedIds = ref([])
 // 새 카테고리 입력값
 const newParentName = ref('')
 const newChildNames = ref({}) // { parentId: '입력값' }
+
+// 이미지 업로드용 ref
+const imageInputRef = ref(null)
+const currentImageTarget = ref(null) // 현재 이미지 업로드 대상 카테고리
 
 // 수정 모드
 const editingId = ref(null)
@@ -62,23 +66,48 @@ const hasChildren = (parent) => {
 }
 
 // API 응답을 작업용 구조로 변환
-const transformApiResponse = (data) => {
+const transformApiResponse = (data, isParent = true) => {
   return data.map((item) => ({
     id: item.id,
     name: item.name,
     sortOrder: item.sortOrder,
-    children: item.children ? transformApiResponse(item.children) : [],
+    // 대분류만 이미지 포함
+    ...(isParent && {
+      image: item.imageUrl ? { url: item.imageUrl, isNew: false } : null,
+    }),
+    children: item.children ? transformApiResponse(item.children, false) : [],
   }))
 }
 
-// 작업용 구조를 API 요청 구조로 변환
-const transformForApi = (items) => {
-  return items.map((item, index) => ({
-    id: item.id,
-    name: item.name,
-    sortOrder: index,
-    children: item.children ? transformForApi(item.children) : [],
-  }))
+// 작업용 구조를 API 요청 구조로 변환 (이미지 파일 배열과 함께 imageIndex 매핑)
+const transformForApi = (items, imageFiles = [], isParent = true) => {
+  return items.map((item, index) => {
+    const result = {
+      id: item.id,
+      name: item.name,
+      sortOrder: index,
+      children: item.children ? transformForApi(item.children, [], false) : [],
+    }
+
+    // 대분류의 경우에만 이미지 처리 (소분류는 imageIndex 없음)
+    if (isParent) {
+      if (item.image) {
+        if (item.image.isNew && item.image.file) {
+          // 새 이미지: imageFiles 배열에 추가하고 인덱스 설정
+          result.imageIndex = imageFiles.length
+          imageFiles.push(item.image.file)
+        } else if (item.image.url && !item.image.isNew) {
+          // 기존 이미지 유지: imageIndex를 -1로 설정 (서버에서 기존 이미지 유지)
+          result.imageIndex = -1
+        }
+      } else {
+        // 이미지 없음 또는 삭제: null로 설정
+        result.imageIndex = null
+      }
+    }
+
+    return result
+  })
 }
 
 // 데이터 로드
@@ -104,17 +133,30 @@ const fetchCategories = async () => {
   }
 }
 
-// 모든 변경사항 저장
+// 모든 변경사항 저장 (FormData 사용)
 const saveAllChanges = async () => {
   isSaving.value = true
 
   try {
+    // 이미지 파일 배열 수집
+    const imageFiles = []
+    const categoriesData = transformForApi(categories.value, imageFiles)
+
     const payload = {
-      categories: transformForApi(categories.value),
+      categories: categoriesData,
       deletedIds: deletedIds.value,
     }
 
-    const response = await put('/admin/categories/sync', payload)
+    // FormData 생성
+    const formData = new FormData()
+    formData.append('data', JSON.stringify(payload))
+
+    // 이미지 파일들 추가 (백엔드 필드명: categoryImages)
+    imageFiles.forEach((file) => {
+      formData.append('categoryImages', file)
+    })
+
+    const response = await $api.putFormData('/admin/categories/sync', formData)
     const responseData = response?.data || response
 
     // 부분 성공 처리: 삭제 실패한 카테고리가 있는 경우
@@ -306,6 +348,61 @@ const getInputKey = (parent) => {
   return parent.id || `new-${categories.value.indexOf(parent)}`
 }
 
+// 이미지 업로드 트리거
+const triggerImageUpload = (category) => {
+  currentImageTarget.value = category
+  imageInputRef.value?.click()
+}
+
+// 이미지 선택 핸들러
+const handleImageSelect = (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  // 파일 유효성 검사
+  if (!file.type.startsWith('image/')) {
+    uiStore.showToast({ type: 'error', message: '이미지 파일만 업로드 가능합니다.' })
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    uiStore.showToast({ type: 'error', message: '파일 크기는 10MB 이하만 가능합니다.' })
+    return
+  }
+
+  if (currentImageTarget.value) {
+    // 기존 미리보기 URL 해제
+    if (currentImageTarget.value.image?.preview) {
+      URL.revokeObjectURL(currentImageTarget.value.image.preview)
+    }
+
+    currentImageTarget.value.image = {
+      file,
+      preview: URL.createObjectURL(file),
+      isNew: true,
+    }
+  }
+
+  // input 초기화
+  if (imageInputRef.value) {
+    imageInputRef.value.value = ''
+  }
+  currentImageTarget.value = null
+}
+
+// 이미지 삭제
+const removeImage = (category) => {
+  if (category.image?.preview && category.image?.isNew) {
+    URL.revokeObjectURL(category.image.preview)
+  }
+  category.image = null
+}
+
+// 이미지 URL 가져오기 (미리보기 또는 서버 URL)
+const getImageUrl = (category) => {
+  if (!category.image) return null
+  return category.image.preview || category.image.url
+}
+
 // 초기 로드
 onMounted(() => {
   fetchCategories()
@@ -328,6 +425,15 @@ onMounted(() => {
     </div>
 
     <div v-else class="max-w-2xl">
+      <!-- 숨겨진 파일 input -->
+      <input
+        ref="imageInputRef"
+        type="file"
+        accept="image/*"
+        class="hidden"
+        @change="handleImageSelect"
+      >
+
       <!-- 대분류 추가 -->
       <div class="mb-6">
         <div class="flex gap-2">
@@ -372,9 +478,54 @@ onMounted(() => {
                 </svg>
               </button>
 
-              <svg class="w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
+              <!-- 이미지 미리보기 / 업로드 버튼 -->
+              <div class="relative group">
+                <div
+                  v-if="getImageUrl(parent)"
+                  class="w-10 h-10 rounded-lg overflow-hidden border border-neutral-200 cursor-pointer"
+                  @click="triggerImageUpload(parent)"
+                >
+                  <img
+                    :src="getImageUrl(parent)"
+                    alt="카테고리 이미지"
+                    class="w-full h-full object-cover"
+                  >
+                  <!-- 호버 시 삭제/변경 버튼 -->
+                  <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                    <button
+                      type="button"
+                      class="p-1 bg-white rounded text-neutral-700 hover:bg-neutral-100"
+                      title="이미지 변경"
+                      @click.stop="triggerImageUpload(parent)"
+                    >
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="p-1 bg-error-500 rounded text-white hover:bg-error-600"
+                      title="이미지 삭제"
+                      @click.stop="removeImage(parent)"
+                    >
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <button
+                  v-else
+                  type="button"
+                  class="w-10 h-10 flex items-center justify-center border-2 border-dashed border-neutral-300 rounded-lg text-neutral-400 hover:border-primary-400 hover:text-primary-500 transition-colors"
+                  title="이미지 업로드"
+                  @click="triggerImageUpload(parent)"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
 
               <!-- 수정 모드 -->
               <template v-if="isEditing(parent)">
