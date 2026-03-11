@@ -1,6 +1,6 @@
 <script setup>
 /**
- * Q&A 상세/답변 페이지
+ * Q&A 상세/답변 페이지 (상품 Q&A)
  *
  * API:
  * - GET /admin/qnas/{id} (상세)
@@ -9,7 +9,8 @@
  *
  * 응답 데이터:
  * {
- *   id, userId, qnaType, productId, orderId, category, title, question,
+ *   id, userId, productId, productName, productThumbnailUrl,
+ *   orderId, category, title, question,
  *   isSecret, isAnswered, answer, answeredBy, answeredAt, status, isVisible,
  *   createdAt, updatedAt
  * }
@@ -25,16 +26,13 @@ const uiStore = useUiStore()
 const { get, patch, del } = useApi()
 
 const qnaId = computed(() => route.params.id)
+const { public: { shopBaseUrl } } = useRuntimeConfig()
 
-// Q&A 타입 옵션
-const qnaTypeOptions = [
-  { value: 'PRODUCT', label: '상품문의' },
-  { value: 'ORDER', label: '주문문의' },
-  { value: 'GENERAL', label: '일반문의' },
-  { value: 'SHIPPING', label: '배송문의' },
-  { value: 'PAYMENT', label: '결제문의' },
-  { value: 'MEMBERSHIP', label: '회원문의' },
-]
+// 상품 페이지 URL
+const productUrl = computed(() => {
+  if (!shopBaseUrl || !qna.value.productId) return ''
+  return `${shopBaseUrl}/products/${qna.value.productId}`
+})
 
 // 상태 옵션
 const statusOptions = [
@@ -47,8 +45,9 @@ const statusOptions = [
 const qna = ref({
   id: null,
   userId: null,
-  qnaType: '',
   productId: null,
+  productName: '',
+  productThumbnailUrl: '',
   orderId: null,
   category: '',
   title: '',
@@ -81,8 +80,9 @@ const fetchQna = async () => {
     qna.value = {
       id: data.id,
       userId: data.userId,
-      qnaType: data.qnaType || '',
       productId: data.productId,
+      productName: data.productName || '',
+      productThumbnailUrl: data.productThumbnailUrl || '',
       orderId: data.orderId,
       category: data.category || '',
       title: data.title || '',
@@ -112,10 +112,6 @@ const fetchQna = async () => {
 }
 
 // 헬퍼
-const getQnaTypeLabel = (qnaType) => {
-  return qnaTypeOptions.find((t) => t.value === qnaType)?.label || qnaType || '-'
-}
-
 const getStatusBadge = (status) => {
   return statusOptions.find((s) => s.value === status) || { label: status || '-', color: 'neutral' }
 }
@@ -193,7 +189,6 @@ onMounted(() => {
             <UiBadge :variant="getStatusBadge(qna.status).color" size="sm">
               {{ getStatusBadge(qna.status).label }}
             </UiBadge>
-            <span class="text-sm text-neutral-500">{{ getQnaTypeLabel(qna.qnaType) }}</span>
             <span v-if="qna.isSecret" class="flex items-center gap-1 text-sm text-neutral-400">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -215,14 +210,45 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- 관련 정보 -->
-          <div v-if="qna.productId || qna.orderId" class="flex items-center gap-4 text-sm">
-            <span v-if="qna.productId" class="text-neutral-500">
-              상품 ID: <span class="text-neutral-700">{{ qna.productId }}</span>
-            </span>
-            <span v-if="qna.orderId" class="text-neutral-500">
-              주문 ID: <span class="text-neutral-700">{{ qna.orderId }}</span>
-            </span>
+          <!-- 상품 정보 -->
+          <component
+            :is="productUrl ? 'a' : 'div'"
+            v-if="qna.productId"
+            :href="productUrl || undefined"
+            :target="productUrl ? '_blank' : undefined"
+            :rel="productUrl ? 'noopener noreferrer' : undefined"
+            class="flex items-center gap-3 p-3 bg-neutral-50 rounded-lg border border-neutral-200"
+            :class="{ 'hover:bg-neutral-100 hover:border-neutral-300 transition-colors cursor-pointer': productUrl }"
+          >
+            <img
+              v-if="qna.productThumbnailUrl"
+              :src="qna.productThumbnailUrl"
+              :alt="qna.productName"
+              class="w-14 h-14 rounded-lg object-cover border border-neutral-200 flex-shrink-0"
+            >
+            <div v-else class="w-14 h-14 rounded-lg bg-neutral-200 flex items-center justify-center flex-shrink-0">
+              <svg class="w-6 h-6 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-neutral-900 truncate">{{ qna.productName || '-' }}</p>
+              <p class="text-xs text-neutral-500 mt-0.5">상품 ID: {{ qna.productId }}</p>
+            </div>
+            <svg
+              v-if="productUrl"
+              class="w-4 h-4 text-neutral-400 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </component>
+
+          <!-- 주문 정보 -->
+          <div v-if="qna.orderId" class="text-sm text-neutral-500">
+            주문 ID: <span class="text-neutral-700">{{ qna.orderId }}</span>
           </div>
 
           <div class="p-4 bg-neutral-50 rounded-lg">

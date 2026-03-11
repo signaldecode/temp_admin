@@ -1277,6 +1277,7 @@ const executeCreateClaim = async () => {
 
 // 초기 로드
 onMounted(async () => {
+  catalogStore.fetchCatalogData($api)
   await fetchOrder()
   // 클레임 정보 항상 조회
   fetchClaims()

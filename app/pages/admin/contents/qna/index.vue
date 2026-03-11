@@ -1,9 +1,8 @@
 <script setup>
 /**
- * Q&A 목록 페이지
+ * Q&A 목록 페이지 (상품 Q&A)
  * GET /admin/qnas
  * - status: PENDING | ANSWERED | CLOSED
- * - qnaType: PRODUCT | ORDER | GENERAL | SHIPPING | PAYMENT | MEMBERSHIP
  * - keyword: string
  * - page: number (0-based)
  * - size: number (default: 20)
@@ -16,16 +15,6 @@ import { formatDate } from '~/utils/formatters'
 const router = useRouter()
 const uiStore = useUiStore()
 const { get } = useApi()
-
-// Q&A 타입 옵션
-const qnaTypeOptions = [
-  { value: 'PRODUCT', label: '상품문의' },
-  { value: 'ORDER', label: '주문문의' },
-  { value: 'GENERAL', label: '일반문의' },
-  { value: 'SHIPPING', label: '배송문의' },
-  { value: 'PAYMENT', label: '결제문의' },
-  { value: 'MEMBERSHIP', label: '회원문의' },
-]
 
 // 상태 옵션
 const statusOptions = [
@@ -42,7 +31,6 @@ const isLoading = ref(false)
 
 // 필터
 const filterStatus = ref('')
-const filterQnaType = ref('')
 const searchKeyword = ref('')
 
 // 페이지네이션
@@ -64,9 +52,6 @@ const fetchQnaList = async () => {
     // 필터 적용
     if (filterStatus.value) {
       params.status = filterStatus.value
-    }
-    if (filterQnaType.value) {
-      params.qnaType = filterQnaType.value
     }
     if (searchKeyword.value.trim()) {
       params.keyword = searchKeyword.value.trim()
@@ -92,7 +77,6 @@ const fetchQnaList = async () => {
 // 테이블 컬럼
 const tableColumns = [
   { key: 'status', label: '상태', width: 'w-24' },
-  { key: 'qnaType', label: '유형', width: 'w-28' },
   { key: 'title', label: '제목' },
   { key: 'createdAt', label: '작성일', width: 'w-36' },
 ]
@@ -124,10 +108,6 @@ const getStatusBadge = (status) => {
   return statusOptions.find((s) => s.value === status) || { label: status || '-', color: 'neutral' }
 }
 
-const getQnaTypeLabel = (qnaType) => {
-  return qnaTypeOptions.find((t) => t.value === qnaType)?.label || qnaType || '-'
-}
-
 // 페이지 이동
 const goToDetail = (qna) => router.push(`/admin/contents/qna/${qna.id}`)
 
@@ -139,7 +119,6 @@ const handleSearch = () => {
 
 const handleReset = () => {
   filterStatus.value = ''
-  filterQnaType.value = ''
   searchKeyword.value = ''
   currentPage.value = 1
   fetchQnaList()
@@ -173,15 +152,6 @@ onMounted(() => {
           >
             <option value="">상태 전체</option>
             <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-              {{ opt.label }}
-            </option>
-          </select>
-          <select
-            v-model="filterQnaType"
-            class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="">유형 전체</option>
-            <option v-for="opt in qnaTypeOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </option>
           </select>
@@ -227,10 +197,6 @@ onMounted(() => {
         </UiBadge>
       </template>
 
-      <template #cell-qnaType="{ item }">
-        <span class="text-sm text-neutral-600">{{ getQnaTypeLabel(item.qnaType) }}</span>
-      </template>
-
       <template #cell-title="{ item }">
         <div class="flex items-center gap-2">
           <span class="text-sm font-medium text-neutral-900 truncate">{{ item.title || '-' }}</span>
@@ -270,7 +236,6 @@ onMounted(() => {
             <UiBadge :variant="getStatusBadge(item.status).color" size="sm">
               {{ getStatusBadge(item.status).label }}
             </UiBadge>
-            <span class="text-xs text-neutral-500">{{ getQnaTypeLabel(item.qnaType) }}</span>
           </div>
           <div class="flex items-center gap-1">
             <svg

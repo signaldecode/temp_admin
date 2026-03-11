@@ -47,6 +47,8 @@ export default defineNuxtConfig({
       apiBase: '/api',
       // Phase 1: 단일 서비스 식별자 (Phase 2에서 동적으로 변경 가능)
       defaultTenantId: process.env.NUXT_PUBLIC_DEFAULT_TENANT_ID || 'default',
+      // 쇼핑몰 프론트 URL
+      shopBaseUrl: process.env.NUXT_PUBLIC_SHOP_BASE_URL || '',
     },
   },
 
