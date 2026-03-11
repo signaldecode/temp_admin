@@ -9,9 +9,9 @@
  *
  * 응답 데이터:
  * {
- *   id, userId, userName, title, content,
- *   isAnswered, answer, answeredBy, answeredAt, status,
- *   createdAt, updatedAt
+ *   id, userId, userName, title, inquiryType, orderNumber,
+ *   content, attachmentUrls, status, answerContent, answeredAt,
+ *   createdAt
  * }
  */
 
@@ -33,20 +33,30 @@ const statusOptions = [
   { value: 'CLOSED', label: '종료', color: 'neutral' },
 ]
 
+// 문의 유형 옵션
+const inquiryTypeOptions = [
+  { value: 'SHIPPING', label: '배송' },
+  { value: 'EXCHANGE', label: '교환' },
+  { value: 'REFUND', label: '환불' },
+  { value: 'PAYMENT', label: '결제' },
+  { value: 'MEMBERSHIP', label: '회원' },
+  { value: 'ETC', label: '기타' },
+]
+
 // 문의 데이터
 const inquiry = ref({
   id: null,
   userId: null,
   userName: '',
   title: '',
+  inquiryType: '',
+  orderNumber: '',
   content: '',
-  isAnswered: false,
-  answer: '',
-  answeredBy: null,
-  answeredAt: null,
+  attachmentUrls: [],
   status: 'PENDING',
+  answerContent: '',
+  answeredAt: null,
   createdAt: '',
-  updatedAt: '',
 })
 
 const isLoading = ref(false)
@@ -68,18 +78,18 @@ const fetchInquiry = async () => {
       userId: data.userId,
       userName: data.userName || '',
       title: data.title || '',
+      inquiryType: data.inquiryType || '',
+      orderNumber: data.orderNumber || '',
       content: data.content || '',
-      isAnswered: data.isAnswered ?? false,
-      answer: data.answer || '',
-      answeredBy: data.answeredBy,
-      answeredAt: data.answeredAt,
+      attachmentUrls: data.attachmentUrls || [],
       status: data.status || 'PENDING',
+      answerContent: data.answerContent || '',
+      answeredAt: data.answeredAt,
       createdAt: data.createdAt,
-      updatedAt: data.updatedAt,
     }
 
     // 기존 답변이 있으면 폼에 세팅
-    answerForm.value = data.answer || ''
+    answerForm.value = data.answerContent || ''
   } catch (error) {
     uiStore.showToast({
       type: 'error',
@@ -96,6 +106,10 @@ const getStatusBadge = (status) => {
   return statusOptions.find((s) => s.value === status) || { label: status || '-', color: 'neutral' }
 }
 
+const getInquiryTypeLabel = (type) => {
+  return inquiryTypeOptions.find((t) => t.value === type)?.label || type || '-'
+}
+
 // 답변 저장
 const handleSave = async () => {
   if (!answerForm.value.trim()) {
@@ -107,7 +121,7 @@ const handleSave = async () => {
 
   try {
     await patch(`/admin/inquiries/${inquiryId.value}/answer`, {
-      answer: answerForm.value,
+      answerContent: answerForm.value,
     })
 
     uiStore.showToast({ type: 'success', message: '답변이 등록되었습니다.' })
@@ -169,6 +183,7 @@ onMounted(() => {
             <UiBadge :variant="getStatusBadge(inquiry.status).color" size="sm">
               {{ getStatusBadge(inquiry.status).label }}
             </UiBadge>
+            <span class="text-sm text-neutral-600">{{ getInquiryTypeLabel(inquiry.inquiryType) }}</span>
           </div>
 
           <div>
@@ -177,10 +192,33 @@ onMounted(() => {
               <span>작성자: {{ inquiry.userName || '-' }}</span>
               <span>{{ inquiry.createdAt ? formatDate(inquiry.createdAt) : '-' }}</span>
             </div>
+            <div v-if="inquiry.orderNumber" class="mt-1 text-sm text-neutral-500">
+              주문번호: {{ inquiry.orderNumber }}
+            </div>
           </div>
 
           <div class="p-4 bg-neutral-50 rounded-lg">
             <p class="text-sm text-neutral-700 whitespace-pre-wrap">{{ inquiry.content || '-' }}</p>
+          </div>
+
+          <!-- 첨부 이미지 -->
+          <div v-if="inquiry.attachmentUrls.length > 0">
+            <p class="text-sm font-medium text-neutral-700 mb-2">첨부 이미지</p>
+            <div class="flex flex-wrap gap-3">
+              <a
+                v-for="(url, idx) in inquiry.attachmentUrls"
+                :key="idx"
+                :href="url"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img
+                  :src="url"
+                  :alt="`첨부 이미지 ${idx + 1}`"
+                  class="w-24 h-24 object-cover rounded-lg border border-neutral-200"
+                />
+              </a>
+            </div>
           </div>
         </div>
       </UiCard>
@@ -188,9 +226,8 @@ onMounted(() => {
       <!-- 답변 -->
       <UiCard title="답변">
         <div class="space-y-3">
-          <div v-if="inquiry.answeredAt" class="flex items-center gap-4 text-sm text-neutral-500">
+          <div v-if="inquiry.answeredAt" class="text-sm text-neutral-500">
             <span>답변일: {{ formatDate(inquiry.answeredAt) }}</span>
-            <span v-if="inquiry.answeredBy">답변자 ID: {{ inquiry.answeredBy }}</span>
           </div>
           <textarea
             v-model="answerForm"

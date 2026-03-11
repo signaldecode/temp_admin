@@ -23,6 +23,16 @@ const statusOptions = [
   { value: 'CLOSED', label: '종료', color: 'neutral' },
 ]
 
+// 문의 유형 옵션
+const inquiryTypeOptions = [
+  { value: 'SHIPPING', label: '배송' },
+  { value: 'EXCHANGE', label: '교환' },
+  { value: 'REFUND', label: '환불' },
+  { value: 'PAYMENT', label: '결제' },
+  { value: 'MEMBERSHIP', label: '회원' },
+  { value: 'ETC', label: '기타' },
+]
+
 // 문의 목록
 const inquiryList = ref([])
 
@@ -31,6 +41,7 @@ const isLoading = ref(false)
 
 // 필터
 const filterStatus = ref('')
+const filterInquiryType = ref('')
 const searchKeyword = ref('')
 
 // 페이지네이션
@@ -52,6 +63,9 @@ const fetchInquiryList = async () => {
     // 필터 적용
     if (filterStatus.value) {
       params.status = filterStatus.value
+    }
+    if (filterInquiryType.value) {
+      params.inquiryType = filterInquiryType.value
     }
     if (searchKeyword.value.trim()) {
       params.keyword = searchKeyword.value.trim()
@@ -77,6 +91,7 @@ const fetchInquiryList = async () => {
 // 테이블 컬럼
 const tableColumns = [
   { key: 'status', label: '상태', width: 'w-24' },
+  { key: 'inquiryType', label: '유형', width: 'w-24' },
   { key: 'title', label: '제목' },
   { key: 'userName', label: '작성자', width: 'w-28' },
   { key: 'createdAt', label: '작성일', width: 'w-36' },
@@ -109,6 +124,10 @@ const getStatusBadge = (status) => {
   return statusOptions.find((s) => s.value === status) || { label: status || '-', color: 'neutral' }
 }
 
+const getInquiryTypeLabel = (type) => {
+  return inquiryTypeOptions.find((t) => t.value === type)?.label || type || '-'
+}
+
 // 페이지 이동
 const goToDetail = (inquiry) => router.push(`/admin/inquiries/${inquiry.id}`)
 
@@ -120,6 +139,7 @@ const handleSearch = () => {
 
 const handleReset = () => {
   filterStatus.value = ''
+  filterInquiryType.value = ''
   searchKeyword.value = ''
   currentPage.value = 1
   fetchInquiryList()
@@ -153,6 +173,15 @@ onMounted(() => {
           >
             <option value="">상태 전체</option>
             <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
+          <select
+            v-model="filterInquiryType"
+            class="px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">유형 전체</option>
+            <option v-for="opt in inquiryTypeOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </option>
           </select>
@@ -198,6 +227,10 @@ onMounted(() => {
         </UiBadge>
       </template>
 
+      <template #cell-inquiryType="{ item }">
+        <span class="text-sm text-neutral-700">{{ getInquiryTypeLabel(item.inquiryType) }}</span>
+      </template>
+
       <template #cell-title="{ item }">
         <span class="text-sm font-medium text-neutral-900 truncate">{{ item.title || '-' }}</span>
       </template>
@@ -215,6 +248,7 @@ onMounted(() => {
           <UiBadge :variant="getStatusBadge(item.status).color" size="sm">
             {{ getStatusBadge(item.status).label }}
           </UiBadge>
+          <span class="text-xs text-neutral-500">{{ getInquiryTypeLabel(item.inquiryType) }}</span>
         </div>
         <p class="text-sm font-medium text-neutral-900 mb-1 truncate">{{ item.title || '-' }}</p>
         <div class="flex items-center gap-3 text-xs text-neutral-400">
