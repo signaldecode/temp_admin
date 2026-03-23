@@ -142,14 +142,14 @@ const handleSubmit = async () => {
     </UiCard>
 
     <!-- Footer -->
-    <p class="mt-6 text-center text-sm text-neutral-500">
-      계정 문제가 있으신가요?
-      <a
-        href="#"
-        class="text-primary-600 hover:text-primary-700"
-      >
-        관리자에게 문의
-      </a>
-    </p>
+    <div class="mt-6 flex items-center justify-center gap-4 text-sm text-neutral-500">
+      <NuxtLink to="/register" class="text-primary-600 hover:text-primary-700 font-medium">
+        회원가입
+      </NuxtLink>
+      <span class="text-neutral-300">|</span>
+      <NuxtLink to="/forgot-password" class="text-primary-600 hover:text-primary-700 font-medium">
+        비밀번호 찾기
+      </NuxtLink>
+    </div>
   </div>
 </template>

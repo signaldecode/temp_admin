@@ -132,6 +132,14 @@ export function useCoupon() {
   }
 
   /**
+   * 쿠폰 노출/비노출 토글
+   * @param {number} id - 쿠폰 ID
+   */
+  const toggleCouponVisibility = async (id) => {
+    await patch(`/admin/coupons/${id}/visibility`)
+  }
+
+  /**
    * 발급 상태에 따른 수정 가능 필드 확인
    * @param {string} status - 발급 상태
    * @returns {Object} - { allEditable, editableFields }
@@ -184,6 +192,7 @@ export function useCoupon() {
     deleteCoupon,
     updateCouponStatus,
     recallCoupon,
+    toggleCouponVisibility,
     // Helpers
     getEditableFields,
     isFieldEditable,

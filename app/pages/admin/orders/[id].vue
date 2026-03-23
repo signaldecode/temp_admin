@@ -834,27 +834,13 @@ const executeStatusChange = async () => {
   }
 }
 
-// 배송 정보 갱신 (배송중인 shipment만 개별 호출)
+// 배송 정보 갱신 (주문별 일괄 갱신 API 사용)
 const refreshDelivery = async () => {
-  // 배송중인 shipment만 필터링
-  const inTransitShipments = shipments.value.filter((s) => s.status === 'IN_TRANSIT')
-  if (inTransitShipments.length === 0) {
-    uiStore.showToast({
-      type: 'info',
-      message: '갱신할 배송중인 건이 없습니다.',
-    })
-    return
-  }
-
   isRefreshingDelivery.value = true
 
   try {
-    // 배송중인 shipment들을 병렬로 갱신
-    await Promise.all(
-      inTransitShipments.map((s) =>
-        $api.post(`/admin/delivery/track/shipment/${s.shipmentId}/refresh`)
-      )
-    )
+    // 주문별 배송 추적 일괄 갱신
+    await $api.post(`/admin/delivery/track/order/${orderId.value}/refresh`)
 
     // 주문 정보 새로고침
     await fetchOrder()
@@ -874,7 +860,7 @@ const refreshDelivery = async () => {
     } else {
       uiStore.showToast({
         type: 'success',
-        message: `${inTransitShipments.length}건의 배송 정보가 갱신되었습니다.`,
+        message: '배송 정보가 갱신되었습니다.',
       })
     }
   } catch (err) {

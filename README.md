@@ -1,6 +1,10 @@
 
 ## 컴포넌트 명명 규칙 (Naming Convention)
 
+## 기술 스택
+React + Next.js / TypeScript
+UI : Shadcn/ui + TailwindCSS
+
 ### 접두사로 성격 구분
 - `Ui*` : 범용 UI 컴포넌트
   - 예) `UiButton`, `UiInput`, `UiModal`, `UiPagination`

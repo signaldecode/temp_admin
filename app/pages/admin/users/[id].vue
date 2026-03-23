@@ -24,6 +24,24 @@ const isLoading = ref(true)
 const error = ref(null)
 const isSavingMemo = ref(false)
 
+// ── 포인트 관련 상태 ──
+const pointData = ref(null)
+const pointHistory = ref([])
+const isLoadingPoints = ref(false)
+const pointPage = ref(1)
+const pointPerPage = 20
+const pointTotalItems = ref(0)
+const pointTotalPages = computed(() => Math.ceil(pointTotalItems.value / pointPerPage))
+
+// 포인트 조정 모달
+const showPointModal = ref(false)
+const isAdjustingPoint = ref(false)
+const pointForm = ref({
+  amount: '',
+  type: 'add', // 'add' | 'deduct'
+  reason: '',
+})
+
 // 회원 정보
 const user = ref(null)
 
@@ -202,6 +220,106 @@ const handleDeleteMemo = async (memoId) => {
   }
 }
 
+// ── 포인트 API ──
+const fetchPoints = async (page = 1) => {
+  isLoadingPoints.value = true
+  try {
+    const response = await $api.get(`/admin/users/${userId.value}/points`, {
+      page: page - 1,
+      size: pointPerPage,
+    })
+
+    // response = { success, data: { current, history: [...] | { content, total_elements, ... } } }
+    const data = response.data ?? response
+
+    pointData.value = data
+
+    const history = data.history || {}
+    if (Array.isArray(history)) {
+      // 배열로 오는 경우 (데이터가 적을 때)
+      pointHistory.value = history
+      pointTotalItems.value = history.length
+    } else {
+      // Page 객체로 오는 경우
+      pointHistory.value = history.content || []
+      pointTotalItems.value = history.total_elements ?? history.totalElements ?? 0
+    }
+
+    pointPage.value = page
+  } catch (err) {
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '포인트 정보를 불러오는데 실패했습니다.',
+    })
+  } finally {
+    isLoadingPoints.value = false
+  }
+}
+
+const handlePointPageChange = (page) => {
+  fetchPoints(page)
+}
+
+// 포인트 조정 모달 열기
+const openPointModal = () => {
+  pointForm.value = { amount: '', type: 'add', reason: '' }
+  showPointModal.value = true
+}
+
+// 포인트 조정 실행
+const handlePointAdjust = async () => {
+  const rawAmount = parseInt(pointForm.value.amount)
+  if (!rawAmount || rawAmount <= 0) {
+    uiStore.showToast({ type: 'error', message: '포인트 금액을 올바르게 입력해주세요.' })
+    return
+  }
+  if (!pointForm.value.reason.trim()) {
+    uiStore.showToast({ type: 'error', message: '사유를 입력해주세요.' })
+    return
+  }
+
+  const amount = pointForm.value.type === 'deduct' ? -rawAmount : rawAmount
+
+  isAdjustingPoint.value = true
+  try {
+    const response = await $api.post(`/admin/users/${userId.value}/points`, {
+      amount,
+      reason: pointForm.value.reason.trim(),
+    })
+
+    const result = response.data || response
+    // user의 current_point 업데이트
+    if (user.value) {
+      user.value.current_point = result.currentAmount ?? result.current_amount
+    }
+
+    showPointModal.value = false
+    uiStore.showToast({
+      type: 'success',
+      message: `포인트가 ${pointForm.value.type === 'add' ? '지급' : '차감'}되었습니다.`,
+    })
+
+    // 포인트 내역 새로고침
+    await fetchPoints(1)
+  } catch (err) {
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '포인트 조정에 실패했습니다.',
+    })
+  } finally {
+    isAdjustingPoint.value = false
+  }
+}
+
+// 포인트 유형 맵 (transaction_type 기준)
+const pointTypeMap = {
+  EARN: { label: '적립', variant: 'success' },
+  USE: { label: '사용', variant: 'error' },
+  ADMIN: { label: '관리자 조정', variant: 'warning' },
+  CANCEL: { label: '취소', variant: 'neutral' },
+  EXPIRE: { label: '소멸', variant: 'neutral' },
+}
+
 // 목록으로 돌아가기
 const goBack = () => {
   router.push('/admin/users')
@@ -219,6 +337,13 @@ const tabs = [
   { id: 'orders', label: '주문 내역' },
   { id: 'point', label: '포인트' },
 ]
+
+// 포인트 탭 진입 시 데이터 로드
+watch(activeTab, (tab) => {
+  if (tab === 'point' && pointHistory.value.length === 0 && !isLoadingPoints.value) {
+    fetchPoints()
+  }
+})
 </script>
 
 <template>
@@ -451,17 +576,191 @@ const tabs = [
       </div>
 
       <!-- Tab Content: 포인트 -->
-      <div v-if="activeTab === 'point'">
+      <div v-if="activeTab === 'point'" class="space-y-6">
+        <!-- 보유 포인트 + 조정 버튼 -->
         <UiCard>
-          <div class="text-center py-8">
-            <p class="text-3xl font-bold text-primary-600 mb-2">{{ formatCurrency(user.current_point || 0) }}</p>
-            <p class="text-neutral-600">현재 보유 포인트</p>
-          </div>
-          <div class="border-t border-neutral-200 pt-4">
-            <p class="text-sm text-neutral-500 text-center">포인트 적립/사용 내역은 추후 구현 예정</p>
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="text-center sm:text-left">
+              <p class="text-sm text-neutral-500 mb-1">현재 보유 포인트</p>
+              <p class="text-3xl font-bold text-primary-600">{{ formatCurrency(user.current_point || 0) }}</p>
+            </div>
+            <UiButton variant="primary" @click="openPointModal">
+              포인트 조정
+            </UiButton>
           </div>
         </UiCard>
+
+        <!-- 포인트 내역 -->
+        <UiCard padding="none">
+          <template #header>
+            <h3 class="font-semibold text-neutral-900">포인트 내역</h3>
+          </template>
+
+          <!-- Loading -->
+          <div v-if="isLoadingPoints" class="flex items-center justify-center py-12">
+            <UiSpinner size="md" />
+          </div>
+
+          <template v-else>
+            <!-- Desktop Table -->
+            <div class="hidden md:block overflow-x-auto">
+              <table class="w-full">
+                <thead>
+                  <tr class="border-b border-neutral-200 bg-neutral-50">
+                    <th class="text-left py-3 px-4 text-sm font-medium text-neutral-600">일시</th>
+                    <th class="text-left py-3 px-4 text-sm font-medium text-neutral-600">유형</th>
+                    <th class="text-left py-3 px-4 text-sm font-medium text-neutral-600">사유</th>
+                    <th class="text-right py-3 px-4 text-sm font-medium text-neutral-600">변동</th>
+                    <th class="text-right py-3 px-4 text-sm font-medium text-neutral-600">잔액</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="item in pointHistory"
+                    :key="item.id"
+                    class="border-b border-neutral-100"
+                  >
+                    <td class="py-3 px-4 text-sm text-neutral-600">{{ item.created_at?.replace('T', ' ').slice(0, 16) }}</td>
+                    <td class="py-3 px-4">
+                      <UiBadge :variant="pointTypeMap[item.transaction_type]?.variant || 'neutral'" size="sm">
+                        {{ pointTypeMap[item.transaction_type]?.label || item.transaction_type }}
+                      </UiBadge>
+                    </td>
+                    <td class="py-3 px-4 text-sm text-neutral-900">{{ item.reason || '-' }}</td>
+                    <td class="py-3 px-4 text-sm text-right font-medium" :class="item.amount > 0 ? 'text-success-600' : 'text-error-600'">
+                      {{ item.amount > 0 ? '+' : '' }}{{ formatCurrency(item.amount) }}
+                    </td>
+                    <td class="py-3 px-4 text-sm text-right text-neutral-700">{{ formatCurrency(item.balance_after) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Mobile Cards -->
+            <div class="md:hidden divide-y divide-neutral-100">
+              <div
+                v-for="item in pointHistory"
+                :key="item.id"
+                class="p-4"
+              >
+                <div class="flex items-center justify-between mb-1">
+                  <UiBadge :variant="pointTypeMap[item.transaction_type]?.variant || 'neutral'" size="sm">
+                    {{ pointTypeMap[item.transaction_type]?.label || item.transaction_type }}
+                  </UiBadge>
+                  <span class="text-sm font-medium" :class="item.amount > 0 ? 'text-success-600' : 'text-error-600'">
+                    {{ item.amount > 0 ? '+' : '' }}{{ formatCurrency(item.amount) }}
+                  </span>
+                </div>
+                <p class="text-sm text-neutral-900">{{ item.reason || '-' }}</p>
+                <div class="flex items-center justify-between mt-1">
+                  <span class="text-xs text-neutral-500">{{ item.created_at?.replace('T', ' ').slice(0, 16) }}</span>
+                  <span class="text-xs text-neutral-500">잔액 {{ formatCurrency(item.balance_after) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <UiEmpty
+              v-if="pointHistory.length === 0"
+              title="포인트 내역이 없습니다"
+            />
+
+            <!-- Pagination -->
+            <div v-if="pointTotalPages > 1" class="p-4 border-t border-neutral-200">
+              <UiPagination
+                v-model:current-page="pointPage"
+                :total-pages="pointTotalPages"
+                :total-items="pointTotalItems"
+                :per-page="pointPerPage"
+                @change="handlePointPageChange"
+              />
+            </div>
+          </template>
+        </UiCard>
       </div>
+
+      <!-- 포인트 조정 모달 -->
+      <UiModal
+        v-model="showPointModal"
+        title="포인트 수동 조정"
+        size="sm"
+      >
+        <div class="space-y-4">
+          <!-- 현재 포인트 -->
+          <div class="p-3 bg-neutral-50 rounded-lg text-center">
+            <p class="text-sm text-neutral-500">현재 보유</p>
+            <p class="text-xl font-bold text-neutral-900">{{ formatCurrency(user?.current_point || 0) }}</p>
+          </div>
+
+          <!-- 지급/차감 선택 -->
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-2">유형</label>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                :class="[
+                  'flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors',
+                  pointForm.type === 'add'
+                    ? 'border-success-500 bg-success-50 text-success-700'
+                    : 'border-neutral-200 text-neutral-600 hover:border-neutral-300',
+                ]"
+                @click="pointForm.type = 'add'"
+              >
+                지급 (+)
+              </button>
+              <button
+                type="button"
+                :class="[
+                  'flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors',
+                  pointForm.type === 'deduct'
+                    ? 'border-error-500 bg-error-50 text-error-700'
+                    : 'border-neutral-200 text-neutral-600 hover:border-neutral-300',
+                ]"
+                @click="pointForm.type = 'deduct'"
+              >
+                차감 (-)
+              </button>
+            </div>
+          </div>
+
+          <!-- 금액 -->
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">포인트</label>
+            <input
+              v-model="pointForm.amount"
+              type="number"
+              min="1"
+              placeholder="조정할 포인트 금액"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+          </div>
+
+          <!-- 사유 -->
+          <div>
+            <label class="block text-sm font-medium text-neutral-700 mb-1">사유 <span class="text-error-500">*</span></label>
+            <textarea
+              v-model="pointForm.reason"
+              rows="3"
+              placeholder="포인트 조정 사유를 입력하세요"
+              class="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+            />
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex justify-end gap-2">
+            <UiButton variant="outline" :disabled="isAdjustingPoint" @click="showPointModal = false">
+              취소
+            </UiButton>
+            <UiButton
+              :variant="pointForm.type === 'deduct' ? 'danger' : 'primary'"
+              :loading="isAdjustingPoint"
+              @click="handlePointAdjust"
+            >
+              {{ pointForm.type === 'add' ? '지급' : '차감' }}
+            </UiButton>
+          </div>
+        </template>
+      </UiModal>
     </template>
 
     <!-- Not Found -->

@@ -64,6 +64,42 @@ const categoryOptions = computed(() => catalogStore.getCategoryOptions())
 // 태그 목록 (Pinia 스토어에서 가져옴)
 const tags = computed(() => catalogStore.tags)
 
+// 태그 생성
+const newTagName = ref('')
+const isCreatingTag = ref(false)
+
+const handleCreateTag = async () => {
+  const name = newTagName.value.trim()
+  if (!name) return
+
+  // 중복 체크
+  if (tags.value.some((t) => t.name === name)) {
+    uiStore.showToast({ type: 'error', message: '이미 존재하는 태그입니다.' })
+    return
+  }
+
+  isCreatingTag.value = true
+  try {
+    const response = await $api.post('/admin/tags', { name })
+    const created = response.data || response
+
+    // catalog store 태그 목록에 추가
+    catalogStore.tags.push(created)
+    // 새 태그 자동 선택
+    selectedTagIds.value.push(created.id)
+
+    newTagName.value = ''
+    uiStore.showToast({ type: 'success', message: `"${name}" 태그가 생성되었습니다.` })
+  } catch (err) {
+    uiStore.showToast({
+      type: 'error',
+      message: err.data?.message || '태그 생성에 실패했습니다.',
+    })
+  } finally {
+    isCreatingTag.value = false
+  }
+}
+
 // 태그 선택/해제 토글
 const toggleTag = (tagId) => {
   const index = selectedTagIds.value.indexOf(tagId)
@@ -1484,6 +1520,25 @@ onMounted(() => {
               <p v-if="tags.length === 0" class="text-sm text-neutral-500">
                 등록된 태그가 없습니다.
               </p>
+            </div>
+            <!-- 태그 인라인 생성 -->
+            <div class="flex items-center gap-2 mt-2">
+              <input
+                v-model="newTagName"
+                type="text"
+                placeholder="새 태그 이름"
+                class="px-3 py-1.5 border border-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                @keyup.enter="handleCreateTag"
+              >
+              <UiButton
+                variant="outline"
+                size="sm"
+                :loading="isCreatingTag"
+                :disabled="!newTagName.trim()"
+                @click="handleCreateTag"
+              >
+                추가
+              </UiButton>
             </div>
           </div>
 

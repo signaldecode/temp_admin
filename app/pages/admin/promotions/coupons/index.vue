@@ -13,6 +13,7 @@ const {
   issuanceStatusOptions,
   getCoupons,
   updateCouponStatus,
+  toggleCouponVisibility,
 } = useCoupon()
 
 // 쿠폰 목록
@@ -69,6 +70,7 @@ const tableColumns = [
   { key: 'couponType', label: '쿠폰 타입', width: 'w-24', align: 'center' },
   { key: 'discount', label: '할인', width: 'w-28', align: 'right' },
   { key: 'issued', label: '발급/한도', width: 'w-28', align: 'center' },
+  { key: 'visible', label: '노출', width: 'w-16', align: 'center' },
   { key: 'status', label: '상태', width: 'w-24', align: 'center' },
   { key: 'actions', label: '발급 관리', width: 'w-28', align: 'center' },
 ]
@@ -146,6 +148,23 @@ const handleStatusChange = async () => {
     uiStore.showToast({
       type: 'error',
       message: error.message || '상태 변경에 실패했습니다.',
+    })
+  }
+}
+
+// 노출 토글
+const handleToggleVisibility = async (coupon) => {
+  try {
+    await toggleCouponVisibility(coupon.id)
+    coupon.visible = !coupon.visible
+    uiStore.showToast({
+      type: 'success',
+      message: `쿠폰이 ${coupon.visible ? '노출' : '비노출'} 처리되었습니다.`,
+    })
+  } catch (error) {
+    uiStore.showToast({
+      type: 'error',
+      message: error.message || '노출 상태 변경에 실패했습니다.',
     })
   }
 }
@@ -237,6 +256,26 @@ onMounted(() => {
 
       <template #cell-issued="{ item }">
         <span class="text-sm text-neutral-600">{{ formatIssuedCount(item.issuedQuantity, item.totalQuantity) }}</span>
+      </template>
+
+      <template #cell-visible="{ item }">
+        <button
+          type="button"
+          :class="[
+            'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1',
+            item.visible ? 'bg-primary-600' : 'bg-neutral-200',
+          ]"
+          role="switch"
+          :aria-checked="item.visible"
+          @click.stop="handleToggleVisibility(item)"
+        >
+          <span
+            :class="[
+              'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform',
+              item.visible ? 'translate-x-4' : 'translate-x-0',
+            ]"
+          />
+        </button>
       </template>
 
       <template #cell-status="{ item }">
